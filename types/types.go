@@ -1,0 +1,122 @@
+package types
+
+import "time"
+
+type TypeMeta struct {
+	APIVersion string `json:"apiVersion" yaml:"apiVersion"`
+	Kind       string `json:"kind" yaml:"kind"`
+}
+
+type ObjectMeta struct {
+	Name              string            `json:"name" yaml:"name"`
+	Namespace         string            `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	UID               string            `json:"uid,omitempty" yaml:"uid,omitempty"`
+	Annotations       map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
+	Labels            map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+	CreationTimestamp time.Time         `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"`
+}
+
+type EnvVar struct {
+	Name  string `json:"name" yaml:"name"`
+	Value string `json:"value" yaml:"value"`
+}
+
+type HTTPGetAction struct {
+	Path   string `json:"path,omitempty" yaml:"path,omitempty"`
+	Port   int    `json:"port" yaml:"port"`
+	Scheme string `json:"scheme,omitempty" yaml:"scheme,omitempty"`
+}
+
+type TCPSocketAction struct {
+	Port int `json:"port" yaml:"port"`
+}
+
+type ExecAction struct {
+	Command []string `json:"command" yaml:"command"`
+}
+
+type Probe struct {
+	HTTPGet             *HTTPGetAction   `json:"httpGet,omitempty" yaml:"httpGet,omitempty"`
+	TCPSocket           *TCPSocketAction `json:"tcpSocket,omitempty" yaml:"tcpSocket,omitempty"`
+	Exec                *ExecAction      `json:"exec,omitempty" yaml:"exec,omitempty"`
+	InitialDelaySeconds int              `json:"initialDelaySeconds,omitempty" yaml:"initialDelaySeconds,omitempty"`
+	PeriodSeconds       int              `json:"periodSeconds,omitempty" yaml:"periodSeconds,omitempty"`
+	TimeoutSeconds      int              `json:"timeoutSeconds,omitempty" yaml:"timeoutSeconds,omitempty"`
+	FailureThreshold    int              `json:"failureThreshold,omitempty" yaml:"failureThreshold,omitempty"`
+	SuccessThreshold    int              `json:"successThreshold,omitempty" yaml:"successThreshold,omitempty"`
+}
+
+type Container struct {
+	Name           string   `json:"name" yaml:"name"`
+	Image          string   `json:"image,omitempty" yaml:"image,omitempty"`
+	Command        []string `json:"command,omitempty" yaml:"command,omitempty"`
+	Args           []string `json:"args,omitempty" yaml:"args,omitempty"`
+	Env            []EnvVar `json:"env,omitempty" yaml:"env,omitempty"`
+	LivenessProbe  *Probe   `json:"livenessProbe,omitempty" yaml:"livenessProbe,omitempty"`
+	ReadinessProbe *Probe   `json:"readinessProbe,omitempty" yaml:"readinessProbe,omitempty"`
+}
+
+type RestartPolicy string
+
+const (
+	RestartAlways    RestartPolicy = "Always"
+	RestartOnFailure RestartPolicy = "OnFailure"
+	RestartNever     RestartPolicy = "Never"
+)
+
+type PodSpec struct {
+	Containers     []Container   `json:"containers" yaml:"containers"`
+	InitContainers []Container   `json:"initContainers,omitempty" yaml:"initContainers,omitempty"`
+	RestartPolicy  RestartPolicy `json:"restartPolicy,omitempty" yaml:"restartPolicy,omitempty"`
+}
+
+type PodPhase string
+
+const (
+	PodPending   PodPhase = "Pending"
+	PodRunning   PodPhase = "Running"
+	PodSucceeded PodPhase = "Succeeded"
+	PodFailed    PodPhase = "Failed"
+)
+
+type ContainerStatus struct {
+	Name         string   `json:"name"`
+	Ready        bool     `json:"ready"`
+	RestartCount int      `json:"restartCount"`
+	State        string   `json:"state"`
+	ExitCode     *int     `json:"exitCode,omitempty"`
+}
+
+type PodCondition struct {
+	Type   string `json:"type"`
+	Status string `json:"status"`
+}
+
+type PodStatus struct {
+	Phase              PodPhase          `json:"phase"`
+	Message            string            `json:"message,omitempty"`
+	StartTime          string            `json:"startTime,omitempty"`
+	RestartCount       int               `json:"restartCount,omitempty"`
+	ContainerStatuses  []ContainerStatus `json:"containerStatuses,omitempty"`
+	Conditions         []PodCondition    `json:"conditions,omitempty"`
+}
+
+type Pod struct {
+	TypeMeta `json:",inline" yaml:",inline"`
+	Metadata ObjectMeta `json:"metadata" yaml:"metadata"`
+	Spec     PodSpec    `json:"spec" yaml:"spec"`
+	Status   PodStatus  `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+type PodList struct {
+	TypeMeta `json:",inline"`
+	Items    []Pod `json:"items"`
+}
+
+type StatusResponse struct {
+	Kind    string `json:"kind"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
+	Reason  string `json:"reason,omitempty"`
+	Code    int    `json:"code"`
+}
