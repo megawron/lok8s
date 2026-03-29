@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/megawron/lok8s/manifest"
+	"github.com/megawron/lok8s/service"
 	"github.com/megawron/lok8s/types"
 )
 
@@ -44,6 +46,8 @@ func (s *Server) handleCreatePod(w http.ResponseWriter, r *http.Request) {
 	}
 
 	env := manifest.CollectEnvVars(pod.Spec.Containers)
+	serviceEnvs := service.GenerateServiceEnv(ns, s.services, s.proxyManager)
+	env = append(env, serviceEnvs...)
 
 	pod.Status = types.PodStatus{
 		Phase:     types.PodPending,
@@ -222,3 +226,103 @@ func (s *Server) handleGetPodLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+func (s *Server) handleCreateService(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeStatus(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+	defer r.Body.Close()
+
+	svc, err := manifest.ParseService(body)
+	if err != nil {
+		writeStatus(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+
+	if svc.Metadata.Namespace == "" {
+		svc.Metadata.Namespace = ns
+	}
+	svc.APIVersion = "v1"
+	svc.Kind = "Service"
+	svc.Metadata.UID = uuid.New().String()
+	svc.Metadata.CreationTimestamp = time.Now().UTC()
+
+	port, err := s.proxyManager.StartProxy(svc)
+	if err != nil {
+		writeStatus(w, http.StatusInternalServerError, fmt.Sprintf("failed to start service proxy: %v", err))
+		return
+	}
+
+	if len(svc.Spec.Ports) > 0 {
+		svc.Spec.Ports[0].NodePort = port
+		if svc.Spec.Ports[0].Port == 0 {
+			svc.Spec.Ports[0].Port = port
+		}
+	}
+
+	s.services.Store(*svc)
+	log.Printf("service %s/%s created (port=%d)", ns, svc.Metadata.Name, port)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(svc)
+}
+
+func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+
+	svcs := s.services.List(ns)
+	if svcs == nil {
+		svcs = []types.Service{}
+	}
+
+	list := types.ServiceList{
+		TypeMeta: types.TypeMeta{APIVersion: "v1", Kind: "ServiceList"},
+		Items:    svcs,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(list)
+}
+
+func (s *Server) handleGetService(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	name := r.PathValue("name")
+
+	svc, ok := s.services.Load(ns, name)
+	if !ok {
+		writeStatus(w, http.StatusNotFound, "service not found")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(svc)
+}
+
+func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	name := r.PathValue("name")
+
+	_, ok := s.services.Load(ns, name)
+	if !ok {
+		writeStatus(w, http.StatusNotFound, "service not found")
+		return
+	}
+
+	s.proxyManager.StopProxy(ns, name)
+	s.services.Delete(ns, name)
+	log.Printf("service %s/%s deleted", ns, name)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(types.StatusResponse{
+		Kind:    "Status",
+		Status:  "Success",
+		Message: "service deleted",
+		Code:    http.StatusOK,
+	})
+}
+

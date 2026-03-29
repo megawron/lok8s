@@ -46,14 +46,21 @@ type Probe struct {
 	SuccessThreshold    int              `json:"successThreshold,omitempty" yaml:"successThreshold,omitempty"`
 }
 
+type ContainerPort struct {
+	Name          string `json:"name,omitempty" yaml:"name,omitempty"`
+	ContainerPort int    `json:"containerPort" yaml:"containerPort"`
+	Protocol      string `json:"protocol,omitempty" yaml:"protocol,omitempty"`
+}
+
 type Container struct {
-	Name           string   `json:"name" yaml:"name"`
-	Image          string   `json:"image,omitempty" yaml:"image,omitempty"`
-	Command        []string `json:"command,omitempty" yaml:"command,omitempty"`
-	Args           []string `json:"args,omitempty" yaml:"args,omitempty"`
-	Env            []EnvVar `json:"env,omitempty" yaml:"env,omitempty"`
-	LivenessProbe  *Probe   `json:"livenessProbe,omitempty" yaml:"livenessProbe,omitempty"`
-	ReadinessProbe *Probe   `json:"readinessProbe,omitempty" yaml:"readinessProbe,omitempty"`
+	Name           string          `json:"name" yaml:"name"`
+	Image          string          `json:"image,omitempty" yaml:"image,omitempty"`
+	Command        []string        `json:"command,omitempty" yaml:"command,omitempty"`
+	Args           []string        `json:"args,omitempty" yaml:"args,omitempty"`
+	Env            []EnvVar        `json:"env,omitempty" yaml:"env,omitempty"`
+	Ports          []ContainerPort `json:"ports,omitempty" yaml:"ports,omitempty"`
+	LivenessProbe  *Probe          `json:"livenessProbe,omitempty" yaml:"livenessProbe,omitempty"`
+	ReadinessProbe *Probe          `json:"readinessProbe,omitempty" yaml:"readinessProbe,omitempty"`
 }
 
 type RestartPolicy string
@@ -99,6 +106,8 @@ type PodStatus struct {
 	RestartCount       int               `json:"restartCount,omitempty"`
 	ContainerStatuses  []ContainerStatus `json:"containerStatuses,omitempty"`
 	Conditions         []PodCondition    `json:"conditions,omitempty"`
+	PodIP              string            `json:"podIP,omitempty" yaml:"podIP,omitempty"`
+	HostPort           int               `json:"hostPort,omitempty" yaml:"hostPort,omitempty"`
 }
 
 type Pod struct {
@@ -111,6 +120,32 @@ type Pod struct {
 type PodList struct {
 	TypeMeta `json:",inline"`
 	Items    []Pod `json:"items"`
+}
+
+type ServicePort struct {
+	Name       string `json:"name,omitempty" yaml:"name,omitempty"`
+	Protocol   string `json:"protocol,omitempty" yaml:"protocol,omitempty"`
+	Port       int    `json:"port" yaml:"port"`
+	TargetPort int    `json:"targetPort,omitempty" yaml:"targetPort,omitempty"`
+	NodePort   int    `json:"nodePort,omitempty" yaml:"nodePort,omitempty"`
+}
+
+type ServiceSpec struct {
+	Ports    []ServicePort     `json:"ports,omitempty" yaml:"ports,omitempty"`
+	Selector map[string]string `json:"selector,omitempty" yaml:"selector,omitempty"`
+	Type     string            `json:"type,omitempty" yaml:"type,omitempty"`
+}
+
+type Service struct {
+	TypeMeta `json:",inline" yaml:",inline"`
+	Metadata ObjectMeta  `json:"metadata" yaml:"metadata"`
+	Spec     ServiceSpec `json:"spec" yaml:"spec"`
+	Status   interface{} `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+type ServiceList struct {
+	TypeMeta `json:",inline"`
+	Items    []Service `json:"items"`
 }
 
 type StatusResponse struct {

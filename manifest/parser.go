@@ -101,3 +101,27 @@ func isJSON(data []byte) bool {
 	}
 	return false
 }
+
+func ParseService(data []byte) (*types.Service, error) {
+	if len(data) == 0 {
+		return nil, errors.New("empty manifest")
+	}
+
+	svc := &types.Service{}
+
+	if isJSON(data) {
+		if err := json.Unmarshal(data, svc); err != nil {
+			return nil, fmt.Errorf("json decode: %w", err)
+		}
+	} else {
+		if err := yaml.Unmarshal(data, svc); err != nil {
+			return nil, fmt.Errorf("yaml decode: %w", err)
+		}
+	}
+
+	if svc.Metadata.Name == "" {
+		return nil, errors.New("metadata.name is required")
+	}
+
+	return svc, nil
+}

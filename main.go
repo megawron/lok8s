@@ -11,6 +11,7 @@ import (
 
 	"github.com/megawron/lok8s/api"
 	"github.com/megawron/lok8s/engine"
+	"github.com/megawron/lok8s/network"
 )
 
 const banner = `
@@ -34,8 +35,9 @@ func main() {
 	registry.Register("native", engine.NewNativeEngine())
 	registry.Register("wasm", engine.NewWasmEngine())
 
-	lifecycle := engine.NewLifecycleManager(registry)
-	srv := api.NewServer(*addr, lifecycle)
+	portPool := network.NewPortPool(30000, 32767)
+	lifecycle := engine.NewLifecycleManager(registry, portPool)
+	srv := api.NewServer(*addr, lifecycle, portPool)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

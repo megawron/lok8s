@@ -8,18 +8,24 @@ import (
 	"sync"
 
 	"github.com/megawron/lok8s/engine"
+	"github.com/megawron/lok8s/network"
+	"github.com/megawron/lok8s/service"
 	"github.com/megawron/lok8s/types"
 )
 
 type Server struct {
-	httpServer *http.Server
-	lifecycle  *engine.LifecycleManager
-	pods       sync.Map
+	httpServer   *http.Server
+	lifecycle    *engine.LifecycleManager
+	services     *service.Store
+	proxyManager *service.ProxyManager
+	pods         sync.Map
 }
 
-func NewServer(addr string, lifecycle *engine.LifecycleManager) *Server {
+func NewServer(addr string, lifecycle *engine.LifecycleManager, portPool *network.PortPool) *Server {
 	s := &Server{
-		lifecycle: lifecycle,
+		lifecycle:    lifecycle,
+		services:     service.NewStore(),
+		proxyManager: service.NewProxyManager(lifecycle, portPool),
 	}
 
 	mux := http.NewServeMux()
@@ -28,6 +34,11 @@ func NewServer(addr string, lifecycle *engine.LifecycleManager) *Server {
 	mux.HandleFunc("GET /api/v1/namespaces/{ns}/pods/{name}", s.handleGetPod)
 	mux.HandleFunc("GET /api/v1/namespaces/{ns}/pods", s.handleListPods)
 	mux.HandleFunc("DELETE /api/v1/namespaces/{ns}/pods/{name}", s.handleDeletePod)
+
+	mux.HandleFunc("POST /api/v1/namespaces/{ns}/services", s.handleCreateService)
+	mux.HandleFunc("GET /api/v1/namespaces/{ns}/services", s.handleListServices)
+	mux.HandleFunc("GET /api/v1/namespaces/{ns}/services/{name}", s.handleGetService)
+	mux.HandleFunc("DELETE /api/v1/namespaces/{ns}/services/{name}", s.handleDeleteService)
 
 	s.httpServer = &http.Server{
 		Addr:    addr,

@@ -7,10 +7,12 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/megawron/lok8s/logs"
+	"github.com/megawron/lok8s/network"
 	"github.com/megawron/lok8s/types"
 )
 
@@ -30,15 +32,21 @@ type managedPod struct {
 	mu           sync.Mutex
 	restartCount int
 	ready        bool
+	hostPort     int
+	proxy        *network.Proxy
 }
 
 type LifecycleManager struct {
 	registry *Registry
+	portPool *network.PortPool
 	pods     sync.Map
 }
 
-func NewLifecycleManager(registry *Registry) *LifecycleManager {
-	return &LifecycleManager{registry: registry}
+func NewLifecycleManager(registry *Registry, portPool *network.PortPool) *LifecycleManager {
+	return &LifecycleManager{
+		registry: registry,
+		portPool: portPool,
+	}
 }
 
 func (lm *LifecycleManager) Launch(pod *types.Pod, engineType, target string, env []types.EnvVar) error {
@@ -46,6 +54,38 @@ func (lm *LifecycleManager) Launch(pod *types.Pod, engineType, target string, en
 
 	if _, loaded := lm.pods.Load(key); loaded {
 		return fmt.Errorf("pod %q already managed", key)
+	}
+
+	// 1. Allocate port if pod has ports defined
+	var hostPort int
+	var err error
+	if len(pod.Spec.Containers) > 0 && len(pod.Spec.Containers[0].Ports) > 0 {
+		hostPort, err = lm.portPool.Allocate(key)
+		if err != nil {
+			return fmt.Errorf("failed to allocate port: %w", err)
+		}
+	}
+
+	// 2. Inject LOK8S_PORT environment variable if a port was allocated
+	if hostPort > 0 {
+		env = append(env, types.EnvVar{
+			Name:  "LOK8S_PORT",
+			Value: fmt.Sprintf("%d", hostPort),
+		})
+		pod.Status.HostPort = hostPort
+		pod.Status.PodIP = "127.0.0.1"
+	}
+
+	containerPort := 0
+	if val, ok := pod.Metadata.Annotations["lok8s.io/container-port"]; ok {
+		var parseErr error
+		containerPort, parseErr = strconv.Atoi(val)
+		if parseErr != nil {
+			if hostPort > 0 {
+				lm.portPool.Release(key)
+			}
+			return fmt.Errorf("invalid lok8s.io/container-port annotation: %v", parseErr)
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -66,12 +106,16 @@ func (lm *LifecycleManager) Launch(pod *types.Pod, engineType, target string, en
 		logBuffer:  logBuf,
 		stdout:     stdout,
 		stderr:     stderr,
+		hostPort:   hostPort,
 	}
 
 	lm.pods.Store(key, mp)
 
 	if len(pod.Spec.InitContainers) > 0 {
 		if err := lm.runInitContainers(ctx, pod.Metadata.Name, pod.Spec.InitContainers, env, stdout, stderr); err != nil {
+			if hostPort > 0 {
+				lm.portPool.Release(key)
+			}
 			lm.pods.Delete(key)
 			cancel()
 			return fmt.Errorf("init containers failed: %w", err)
@@ -80,15 +124,33 @@ func (lm *LifecycleManager) Launch(pod *types.Pod, engineType, target string, en
 
 	eng, err := lm.registry.Get(engineType)
 	if err != nil {
+		if hostPort > 0 {
+			lm.portPool.Release(key)
+		}
 		lm.pods.Delete(key)
 		cancel()
 		return err
 	}
 
 	if err := eng.Start(ctx, pod, target, env, stdout, stderr); err != nil {
+		if hostPort > 0 {
+			lm.portPool.Release(key)
+		}
 		lm.pods.Delete(key)
 		cancel()
 		return err
+	}
+
+	// Start Pod proxy if hostPort > 0 and containerPort > 0 and different
+	if hostPort > 0 && containerPort > 0 && hostPort != containerPort {
+		proxy := network.NewProxy(fmt.Sprintf("127.0.0.1:%d", hostPort), fmt.Sprintf("127.0.0.1:%d", containerPort))
+		if err := proxy.Start(); err != nil {
+			log.Printf("[lifecycle] Failed to start proxy for pod %q: %v", pod.Metadata.Name, err)
+		} else {
+			mp.mu.Lock()
+			mp.proxy = proxy
+			mp.mu.Unlock()
+		}
 	}
 
 	mp.mu.Lock()
@@ -110,6 +172,16 @@ func (lm *LifecycleManager) Terminate(namespace, name string) error {
 
 	mp := val.(*managedPod)
 	mp.cancel()
+
+	mp.mu.Lock()
+	if mp.proxy != nil {
+		mp.proxy.Close()
+	}
+	mp.mu.Unlock()
+
+	if mp.hostPort > 0 {
+		lm.portPool.Release(key)
+	}
 
 	if eng, err := lm.registry.Get(mp.engineType); err == nil {
 		eng.Stop(name)
@@ -138,12 +210,17 @@ func (lm *LifecycleManager) Status(namespace, name string) (types.PodStatus, boo
 	mp.mu.Lock()
 	restartCount := mp.restartCount
 	ready := mp.ready
+	hostPort := mp.hostPort
 	mp.mu.Unlock()
 
 	status := types.PodStatus{
 		Phase:        phase,
 		RestartCount: restartCount,
 		StartTime:    mp.pod.Status.StartTime,
+		HostPort:     hostPort,
+	}
+	if hostPort > 0 {
+		status.PodIP = "127.0.0.1"
 	}
 
 	if len(mp.pod.Spec.Containers) > 0 {
@@ -157,6 +234,21 @@ func (lm *LifecycleManager) Status(namespace, name string) (types.PodStatus, boo
 	}
 
 	return status, true
+}
+
+func (lm *LifecycleManager) ListActivePods() []types.Pod {
+	var result []types.Pod
+	lm.pods.Range(func(key, value any) bool {
+		mp := value.(*managedPod)
+		
+		status, _ := lm.Status(mp.pod.Metadata.Namespace, mp.pod.Metadata.Name)
+		
+		podCopy := mp.pod
+		podCopy.Status = status
+		result = append(result, podCopy)
+		return true
+	})
+	return result
 }
 
 func (lm *LifecycleManager) Logs(namespace, name string) (*logs.RingBuffer, bool) {
