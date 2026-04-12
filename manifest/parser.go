@@ -125,3 +125,51 @@ func ParseService(data []byte) (*types.Service, error) {
 
 	return svc, nil
 }
+
+func ParseConfigMap(data []byte) (*types.ConfigMap, error) {
+	if len(data) == 0 {
+		return nil, errors.New("empty manifest")
+	}
+
+	cm := &types.ConfigMap{}
+
+	if isJSON(data) {
+		if err := json.Unmarshal(data, cm); err != nil {
+			return nil, fmt.Errorf("json decode: %w", err)
+		}
+	} else {
+		if err := yaml.Unmarshal(data, cm); err != nil {
+			return nil, fmt.Errorf("yaml decode: %w", err)
+		}
+	}
+
+	if cm.Metadata.Name == "" {
+		return nil, errors.New("metadata.name is required")
+	}
+
+	return cm, nil
+}
+
+func ParseSecret(data []byte) (*types.Secret, error) {
+	if len(data) == 0 {
+		return nil, errors.New("empty manifest")
+	}
+
+	sec := &types.Secret{}
+
+	if isJSON(data) {
+		if err := json.Unmarshal(data, sec); err != nil {
+			return nil, fmt.Errorf("json decode: %w", err)
+		}
+	} else {
+		if err := yaml.Unmarshal(data, sec); err != nil {
+			return nil, fmt.Errorf("yaml decode: %w", err)
+		}
+	}
+
+	if sec.Metadata.Name == "" {
+		return nil, errors.New("metadata.name is required")
+	}
+
+	return sec, nil
+}

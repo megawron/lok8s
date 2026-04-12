@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/megawron/lok8s/types"
@@ -29,7 +31,7 @@ func NewNativeEngine() *NativeEngine {
 	}
 }
 
-func (e *NativeEngine) Start(ctx context.Context, pod *types.Pod, target string, env []types.EnvVar, stdout, stderr io.Writer) error {
+func (e *NativeEngine) Start(ctx context.Context, pod *types.Pod, target string, env []types.EnvVar, volumes map[string]string, stdout, stderr io.Writer) error {
 	if _, err := os.Stat(target); err != nil {
 		return fmt.Errorf("binary not found: %w", err)
 	}
@@ -39,6 +41,22 @@ func (e *NativeEngine) Start(ctx context.Context, pod *types.Pod, target string,
 	e.mu.RUnlock()
 	if exists && existing.phase == types.PodRunning {
 		return fmt.Errorf("pod %q already running", pod.Metadata.Name)
+	}
+
+	// Project volume mounts for native process
+	if len(pod.Spec.Containers) > 0 {
+		c := pod.Spec.Containers[0]
+		for _, vm := range c.VolumeMounts {
+			hostDir, ok := volumes[vm.Name]
+			if !ok {
+				continue
+			}
+			mountNativeVolume(hostDir, vm.MountPath)
+
+			envVarName := "LOK8S_VOLUME_" + strings.ToUpper(vm.Name)
+			envVarName = strings.ReplaceAll(envVarName, "-", "_")
+			env = append(env, types.EnvVar{Name: envVarName, Value: hostDir})
+		}
 	}
 
 	procCtx, cancel := context.WithCancel(ctx)
@@ -123,4 +141,47 @@ func buildOSEnv(vars []types.EnvVar) []string {
 		base = append(base, v.Name+"="+v.Value)
 	}
 	return base
+}
+
+func mountNativeVolume(hostDir, mountPath string) {
+	parent := filepath.Dir(mountPath)
+	_ = os.MkdirAll(parent, 0755)
+
+	_ = os.RemoveAll(mountPath)
+
+	err := os.Symlink(hostDir, mountPath)
+	if err == nil {
+		return
+	}
+
+	// Fallback to copy dir if symlink fails (e.g. permission restriction on Windows)
+	_ = copyDir(hostDir, mountPath)
+}
+
+func copyDir(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+		if entry.IsDir() {
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			data, err := os.ReadFile(srcPath)
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(dstPath, data, entry.Type().Perm()); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

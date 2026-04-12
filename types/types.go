@@ -52,6 +52,12 @@ type ContainerPort struct {
 	Protocol      string `json:"protocol,omitempty" yaml:"protocol,omitempty"`
 }
 
+type VolumeMount struct {
+	Name      string `json:"name" yaml:"name"`
+	MountPath string `json:"mountPath" yaml:"mountPath"`
+	ReadOnly  bool   `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+}
+
 type Container struct {
 	Name           string          `json:"name" yaml:"name"`
 	Image          string          `json:"image,omitempty" yaml:"image,omitempty"`
@@ -59,6 +65,7 @@ type Container struct {
 	Args           []string        `json:"args,omitempty" yaml:"args,omitempty"`
 	Env            []EnvVar        `json:"env,omitempty" yaml:"env,omitempty"`
 	Ports          []ContainerPort `json:"ports,omitempty" yaml:"ports,omitempty"`
+	VolumeMounts   []VolumeMount   `json:"volumeMounts,omitempty" yaml:"volumeMounts,omitempty"`
 	LivenessProbe  *Probe          `json:"livenessProbe,omitempty" yaml:"livenessProbe,omitempty"`
 	ReadinessProbe *Probe          `json:"readinessProbe,omitempty" yaml:"readinessProbe,omitempty"`
 }
@@ -71,10 +78,25 @@ const (
 	RestartNever     RestartPolicy = "Never"
 )
 
+type ConfigMapVolumeSource struct {
+	Name string `json:"name" yaml:"name"`
+}
+
+type SecretVolumeSource struct {
+	SecretName string `json:"secretName" yaml:"secretName"`
+}
+
+type Volume struct {
+	Name      string                 `json:"name" yaml:"name"`
+	ConfigMap *ConfigMapVolumeSource `json:"configMap,omitempty" yaml:"configMap,omitempty"`
+	Secret    *SecretVolumeSource    `json:"secret,omitempty" yaml:"secret,omitempty"`
+}
+
 type PodSpec struct {
 	Containers     []Container   `json:"containers" yaml:"containers"`
 	InitContainers []Container   `json:"initContainers,omitempty" yaml:"initContainers,omitempty"`
 	RestartPolicy  RestartPolicy `json:"restartPolicy,omitempty" yaml:"restartPolicy,omitempty"`
+	Volumes        []Volume      `json:"volumes,omitempty" yaml:"volumes,omitempty"`
 }
 
 type PodPhase string
@@ -146,6 +168,30 @@ type Service struct {
 type ServiceList struct {
 	TypeMeta `json:",inline"`
 	Items    []Service `json:"items"`
+}
+
+type ConfigMap struct {
+	TypeMeta `json:",inline" yaml:",inline"`
+	Metadata ObjectMeta        `json:"metadata" yaml:"metadata"`
+	Data     map[string]string `json:"data,omitempty" yaml:"data,omitempty"`
+}
+
+type ConfigMapList struct {
+	TypeMeta `json:",inline"`
+	Items    []ConfigMap `json:"items"`
+}
+
+type Secret struct {
+	TypeMeta   `json:",inline" yaml:",inline"`
+	Metadata   ObjectMeta        `json:"metadata" yaml:"metadata"`
+	Data       map[string][]byte `json:"data,omitempty" yaml:"data,omitempty"`
+	StringData map[string]string `json:"stringData,omitempty" yaml:"stringData,omitempty"`
+	Type       string            `json:"type,omitempty" yaml:"type,omitempty"`
+}
+
+type SecretList struct {
+	TypeMeta `json:",inline"`
+	Items    []Secret `json:"items"`
 }
 
 type StatusResponse struct {

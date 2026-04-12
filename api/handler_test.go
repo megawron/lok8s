@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/megawron/lok8s/config"
 	"github.com/megawron/lok8s/engine"
 	"github.com/megawron/lok8s/network"
 	"github.com/megawron/lok8s/types"
@@ -24,7 +25,7 @@ type mockEngine struct {
 	stdout io.Writer
 }
 
-func (m *mockEngine) Start(ctx context.Context, pod *types.Pod, target string, env []types.EnvVar, stdout, stderr io.Writer) error {
+func (m *mockEngine) Start(ctx context.Context, pod *types.Pod, target string, env []types.EnvVar, volumes map[string]string, stdout, stderr io.Writer) error {
 	m.mu.Lock()
 	m.status[pod.Metadata.Name] = types.PodRunning
 	m.stdout = stdout
@@ -60,8 +61,9 @@ func TestServer_GetPodLogs(t *testing.T) {
 
 	// Create LifecycleManager & Server
 	pool := network.NewPortPool(30000, 32767)
-	lm := engine.NewLifecycleManager(reg, pool)
-	srv := NewServer("127.0.0.1:0", lm, pool)
+	configStore := config.NewStore()
+	lm := engine.NewLifecycleManager(reg, pool, configStore)
+	srv := NewServer("127.0.0.1:0", lm, pool, configStore)
 
 	// We can test the HTTP handler directly using httptest.NewRecorder() or httptest.NewServer()
 	// Let's use httptest.NewServer to properly test streaming / follow.
@@ -81,6 +83,7 @@ func TestServer_GetPodLogs(t *testing.T) {
 	pod := &types.Pod{
 		TypeMeta: types.TypeMeta{APIVersion: "v1", Kind: "Pod"},
 		Metadata: types.ObjectMeta{
+			UID:       "test-pod-uid",
 			Name:      "test-pod",
 			Namespace: "default",
 			Annotations: map[string]string{
@@ -185,8 +188,9 @@ func TestServer_GetPodLogs_InvalidParams(t *testing.T) {
 	reg.Register("mock", mockEng)
 
 	pool := network.NewPortPool(30000, 32767)
-	lm := engine.NewLifecycleManager(reg, pool)
-	srv := NewServer("127.0.0.1:0", lm, pool)
+	configStore := config.NewStore()
+	lm := engine.NewLifecycleManager(reg, pool, configStore)
+	srv := NewServer("127.0.0.1:0", lm, pool, configStore)
 
 	ts := httptest.NewServer(srv.httpServer.Handler)
 	defer ts.Close()
@@ -194,6 +198,7 @@ func TestServer_GetPodLogs_InvalidParams(t *testing.T) {
 	pod := &types.Pod{
 		TypeMeta: types.TypeMeta{APIVersion: "v1", Kind: "Pod"},
 		Metadata: types.ObjectMeta{
+			UID:       "test-pod-uid-2",
 			Name:      "test-pod",
 			Namespace: "default",
 			Annotations: map[string]string{

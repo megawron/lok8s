@@ -326,3 +326,173 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleCreateConfigMap(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeStatus(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+	defer r.Body.Close()
+
+	cm, err := manifest.ParseConfigMap(body)
+	if err != nil {
+		writeStatus(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+
+	if cm.Metadata.Namespace == "" {
+		cm.Metadata.Namespace = ns
+	}
+	cm.APIVersion = "v1"
+	cm.Kind = "ConfigMap"
+	cm.Metadata.UID = uuid.New().String()
+	cm.Metadata.CreationTimestamp = time.Now().UTC()
+
+	s.configStore.StoreConfigMap(*cm)
+	log.Printf("configmap %s/%s created", ns, cm.Metadata.Name)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(cm)
+}
+
+func (s *Server) handleListConfigMaps(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+
+	cms := s.configStore.ListConfigMaps(ns)
+	if cms == nil {
+		cms = []types.ConfigMap{}
+	}
+
+	list := types.ConfigMapList{
+		TypeMeta: types.TypeMeta{APIVersion: "v1", Kind: "ConfigMapList"},
+		Items:    cms,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(list)
+}
+
+func (s *Server) handleGetConfigMap(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	name := r.PathValue("name")
+
+	cm, ok := s.configStore.LoadConfigMap(ns, name)
+	if !ok {
+		writeStatus(w, http.StatusNotFound, "configmap not found")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cm)
+}
+
+func (s *Server) handleDeleteConfigMap(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	name := r.PathValue("name")
+
+	_, ok := s.configStore.LoadConfigMap(ns, name)
+	if !ok {
+		writeStatus(w, http.StatusNotFound, "configmap not found")
+		return
+	}
+
+	s.configStore.DeleteConfigMap(ns, name)
+	log.Printf("configmap %s/%s deleted", ns, name)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(types.StatusResponse{
+		Kind:    "Status",
+		Status:  "Success",
+		Message: "configmap deleted",
+		Code:    http.StatusOK,
+	})
+}
+
+func (s *Server) handleCreateSecret(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeStatus(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+	defer r.Body.Close()
+
+	sec, err := manifest.ParseSecret(body)
+	if err != nil {
+		writeStatus(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+
+	if sec.Metadata.Namespace == "" {
+		sec.Metadata.Namespace = ns
+	}
+	sec.APIVersion = "v1"
+	sec.Kind = "Secret"
+	sec.Metadata.UID = uuid.New().String()
+	sec.Metadata.CreationTimestamp = time.Now().UTC()
+
+	s.configStore.StoreSecret(*sec)
+	log.Printf("secret %s/%s created", ns, sec.Metadata.Name)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(sec)
+}
+
+func (s *Server) handleListSecrets(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+
+	secs := s.configStore.ListSecrets(ns)
+	if secs == nil {
+		secs = []types.Secret{}
+	}
+
+	list := types.SecretList{
+		TypeMeta: types.TypeMeta{APIVersion: "v1", Kind: "SecretList"},
+		Items:    secs,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(list)
+}
+
+func (s *Server) handleGetSecret(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	name := r.PathValue("name")
+
+	sec, ok := s.configStore.LoadSecret(ns, name)
+	if !ok {
+		writeStatus(w, http.StatusNotFound, "secret not found")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sec)
+}
+
+func (s *Server) handleDeleteSecret(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	name := r.PathValue("name")
+
+	_, ok := s.configStore.LoadSecret(ns, name)
+	if !ok {
+		writeStatus(w, http.StatusNotFound, "secret not found")
+		return
+	}
+
+	s.configStore.DeleteSecret(ns, name)
+	log.Printf("secret %s/%s deleted", ns, name)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(types.StatusResponse{
+		Kind:    "Status",
+		Status:  "Success",
+		Message: "secret deleted",
+		Code:    http.StatusOK,
+	})
+}
+

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/megawron/lok8s/config"
 	"github.com/megawron/lok8s/engine"
 	"github.com/megawron/lok8s/network"
 	"github.com/megawron/lok8s/service"
@@ -18,14 +19,16 @@ type Server struct {
 	lifecycle    *engine.LifecycleManager
 	services     *service.Store
 	proxyManager *service.ProxyManager
+	configStore  *config.Store
 	pods         sync.Map
 }
 
-func NewServer(addr string, lifecycle *engine.LifecycleManager, portPool *network.PortPool) *Server {
+func NewServer(addr string, lifecycle *engine.LifecycleManager, portPool *network.PortPool, configStore *config.Store) *Server {
 	s := &Server{
 		lifecycle:    lifecycle,
 		services:     service.NewStore(),
 		proxyManager: service.NewProxyManager(lifecycle, portPool),
+		configStore:  configStore,
 	}
 
 	mux := http.NewServeMux()
@@ -39,6 +42,16 @@ func NewServer(addr string, lifecycle *engine.LifecycleManager, portPool *networ
 	mux.HandleFunc("GET /api/v1/namespaces/{ns}/services", s.handleListServices)
 	mux.HandleFunc("GET /api/v1/namespaces/{ns}/services/{name}", s.handleGetService)
 	mux.HandleFunc("DELETE /api/v1/namespaces/{ns}/services/{name}", s.handleDeleteService)
+
+	mux.HandleFunc("POST /api/v1/namespaces/{ns}/configmaps", s.handleCreateConfigMap)
+	mux.HandleFunc("GET /api/v1/namespaces/{ns}/configmaps", s.handleListConfigMaps)
+	mux.HandleFunc("GET /api/v1/namespaces/{ns}/configmaps/{name}", s.handleGetConfigMap)
+	mux.HandleFunc("DELETE /api/v1/namespaces/{ns}/configmaps/{name}", s.handleDeleteConfigMap)
+
+	mux.HandleFunc("POST /api/v1/namespaces/{ns}/secrets", s.handleCreateSecret)
+	mux.HandleFunc("GET /api/v1/namespaces/{ns}/secrets", s.handleListSecrets)
+	mux.HandleFunc("GET /api/v1/namespaces/{ns}/secrets/{name}", s.handleGetSecret)
+	mux.HandleFunc("DELETE /api/v1/namespaces/{ns}/secrets/{name}", s.handleDeleteSecret)
 
 	s.httpServer = &http.Server{
 		Addr:    addr,

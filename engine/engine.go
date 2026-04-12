@@ -10,7 +10,7 @@ import (
 )
 
 type PodEngine interface {
-	Start(ctx context.Context, pod *types.Pod, target string, env []types.EnvVar, stdout, stderr io.Writer) error
+	Start(ctx context.Context, pod *types.Pod, target string, env []types.EnvVar, volumes map[string]string, stdout, stderr io.Writer) error
 	Stop(podName string) error
 	Status(podName string) types.PodPhase
 }

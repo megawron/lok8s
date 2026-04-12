@@ -11,41 +11,46 @@ import (
 	"sync"
 	"time"
 
+	"github.com/megawron/lok8s/config"
 	"github.com/megawron/lok8s/logs"
 	"github.com/megawron/lok8s/network"
 	"github.com/megawron/lok8s/types"
+	"github.com/megawron/lok8s/volume"
 )
 
 const maxBackoff = 5 * time.Minute
 
 type managedPod struct {
-	pod        types.Pod
-	engineType string
-	target     string
-	env        []types.EnvVar
-	cancel     context.CancelFunc
+	pod              types.Pod
+	engineType       string
+	target           string
+	env              []types.EnvVar
+	cancel           context.CancelFunc
 
 	logBuffer *logs.RingBuffer
 	stdout    io.Writer
 	stderr    io.Writer
 
-	mu           sync.Mutex
+	mu               sync.Mutex
 	restartCount int
-	ready        bool
-	hostPort     int
-	proxy        *network.Proxy
+	ready            bool
+	hostPort         int
+	proxy            *network.Proxy
+	projectedVolumes map[string]string
 }
 
 type LifecycleManager struct {
-	registry *Registry
-	portPool *network.PortPool
-	pods     sync.Map
+	registry    *Registry
+	portPool    *network.PortPool
+	configStore *config.Store
+	pods        sync.Map
 }
 
-func NewLifecycleManager(registry *Registry, portPool *network.PortPool) *LifecycleManager {
+func NewLifecycleManager(registry *Registry, portPool *network.PortPool, configStore *config.Store) *LifecycleManager {
 	return &LifecycleManager{
-		registry: registry,
-		portPool: portPool,
+		registry:    registry,
+		portPool:    portPool,
+		configStore: configStore,
 	}
 }
 
@@ -88,6 +93,15 @@ func (lm *LifecycleManager) Launch(pod *types.Pod, engineType, target string, en
 		}
 	}
 
+	// 3. Project Volumes
+	projected, err := volume.ProjectVolumes(pod, lm.configStore)
+	if err != nil {
+		if hostPort > 0 {
+			lm.portPool.Release(key)
+		}
+		return fmt.Errorf("failed to project volumes: %w", err)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	logBuf := logs.NewRingBuffer(logs.DefaultCapacity)
@@ -98,15 +112,16 @@ func (lm *LifecycleManager) Launch(pod *types.Pod, engineType, target string, en
 	stderr := io.MultiWriter(logBuf, termErr)
 
 	mp := &managedPod{
-		pod:        *pod,
-		engineType: engineType,
-		target:     target,
-		env:        env,
-		cancel:     cancel,
-		logBuffer:  logBuf,
-		stdout:     stdout,
-		stderr:     stderr,
-		hostPort:   hostPort,
+		pod:              *pod,
+		engineType:       engineType,
+		target:           target,
+		env:              env,
+		cancel:           cancel,
+		logBuffer:        logBuf,
+		stdout:           stdout,
+		stderr:           stderr,
+		hostPort:         hostPort,
+		projectedVolumes: projected,
 	}
 
 	lm.pods.Store(key, mp)
@@ -116,6 +131,7 @@ func (lm *LifecycleManager) Launch(pod *types.Pod, engineType, target string, en
 			if hostPort > 0 {
 				lm.portPool.Release(key)
 			}
+			volume.CleanupVolumes(pod)
 			lm.pods.Delete(key)
 			cancel()
 			return fmt.Errorf("init containers failed: %w", err)
@@ -127,15 +143,17 @@ func (lm *LifecycleManager) Launch(pod *types.Pod, engineType, target string, en
 		if hostPort > 0 {
 			lm.portPool.Release(key)
 		}
+		volume.CleanupVolumes(pod)
 		lm.pods.Delete(key)
 		cancel()
 		return err
 	}
 
-	if err := eng.Start(ctx, pod, target, env, stdout, stderr); err != nil {
+	if err := eng.Start(ctx, pod, target, env, projected, stdout, stderr); err != nil {
 		if hostPort > 0 {
 			lm.portPool.Release(key)
 		}
+		volume.CleanupVolumes(pod)
 		lm.pods.Delete(key)
 		cancel()
 		return err
@@ -182,6 +200,16 @@ func (lm *LifecycleManager) Terminate(namespace, name string) error {
 	if mp.hostPort > 0 {
 		lm.portPool.Release(key)
 	}
+
+	// Clean up any local copies of native volume mounts
+	if len(mp.pod.Spec.Containers) > 0 {
+		for _, vm := range mp.pod.Spec.Containers[0].VolumeMounts {
+			_ = os.RemoveAll(vm.MountPath)
+		}
+	}
+
+	// Clean up projected volume temp directories
+	volume.CleanupVolumes(&mp.pod)
 
 	if eng, err := lm.registry.Get(mp.engineType); err == nil {
 		eng.Stop(name)
@@ -323,7 +351,7 @@ func (lm *LifecycleManager) monitor(ctx context.Context, mp *managedPod, key str
 				return
 			}
 
-			if err := eng.Start(ctx, &mp.pod, mp.target, mp.env, mp.stdout, mp.stderr); err != nil {
+			if err := eng.Start(ctx, &mp.pod, mp.target, mp.env, mp.projectedVolumes, mp.stdout, mp.stderr); err != nil {
 				log.Printf("[lifecycle] restart failed for pod %q: %v", mp.pod.Metadata.Name, err)
 				return
 			}
