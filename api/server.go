@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/megawron/lok8s/config"
+	"github.com/megawron/lok8s/discovery"
 	"github.com/megawron/lok8s/engine"
 	"github.com/megawron/lok8s/network"
 	"github.com/megawron/lok8s/service"
@@ -52,6 +53,13 @@ func NewServer(addr string, lifecycle *engine.LifecycleManager, portPool *networ
 	mux.HandleFunc("GET /api/v1/namespaces/{ns}/secrets", s.handleListSecrets)
 	mux.HandleFunc("GET /api/v1/namespaces/{ns}/secrets/{name}", s.handleGetSecret)
 	mux.HandleFunc("DELETE /api/v1/namespaces/{ns}/secrets/{name}", s.handleDeleteSecret)
+
+	// K8s compatibility discovery routes
+	mux.HandleFunc("GET /api", discovery.HandleAPIRoot)
+	mux.HandleFunc("GET /api/v1", discovery.HandleAPIV1)
+	mux.HandleFunc("GET /apis", discovery.HandleAPIs)
+	mux.HandleFunc("GET /version", discovery.HandleVersion)
+	mux.HandleFunc("GET /.well-known/openid-configuration", discovery.HandleOpenIDConfig)
 
 	s.httpServer = &http.Server{
 		Addr:    addr,

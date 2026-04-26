@@ -40,10 +40,14 @@ type managedPod struct {
 }
 
 type LifecycleManager struct {
-	registry    *Registry
-	portPool    *network.PortPool
-	configStore *config.Store
-	pods        sync.Map
+	registry        *Registry
+	portPool        *network.PortPool
+	configStore     *config.Store
+	pods            sync.Map
+	watchMu         sync.Mutex
+	watchers        map[int64]chan types.WatchEvent
+	nextWatchID     int64
+	resourceVersion int64
 }
 
 func NewLifecycleManager(registry *Registry, portPool *network.PortPool, configStore *config.Store) *LifecycleManager {
@@ -51,7 +55,63 @@ func NewLifecycleManager(registry *Registry, portPool *network.PortPool, configS
 		registry:    registry,
 		portPool:    portPool,
 		configStore: configStore,
+		watchers:    make(map[int64]chan types.WatchEvent),
 	}
+}
+
+func (lm *LifecycleManager) Watch(ctx context.Context) <-chan types.WatchEvent {
+	ch := make(chan types.WatchEvent, 100)
+
+	lm.watchMu.Lock()
+	id := lm.nextWatchID
+	lm.nextWatchID++
+	lm.watchers[id] = ch
+	lm.watchMu.Unlock()
+
+	go func() {
+		pods := lm.ListActivePods()
+		for _, p := range pods {
+			select {
+			case ch <- types.WatchEvent{Type: "ADDED", Object: p}:
+			case <-ctx.Done():
+				return
+			}
+		}
+
+		<-ctx.Done()
+		lm.watchMu.Lock()
+		delete(lm.watchers, id)
+		lm.watchMu.Unlock()
+		close(ch)
+	}()
+
+	return ch
+}
+
+func (lm *LifecycleManager) broadcast(event types.WatchEvent) {
+	lm.watchMu.Lock()
+	defer lm.watchMu.Unlock()
+	for _, ch := range lm.watchers {
+		select {
+		case ch <- event:
+		default:
+		}
+	}
+}
+
+func (lm *LifecycleManager) updatePodStatus(mp *managedPod) {
+	status, _ := lm.Status(mp.pod.Metadata.Namespace, mp.pod.Metadata.Name)
+	
+	lm.watchMu.Lock()
+	lm.resourceVersion++
+	rv := fmt.Sprintf("%d", lm.resourceVersion)
+	lm.watchMu.Unlock()
+
+	podCopy := mp.pod
+	podCopy.Status = status
+	podCopy.Metadata.ResourceVersion = rv
+
+	lm.broadcast(types.WatchEvent{Type: "MODIFIED", Object: podCopy})
 }
 
 func (lm *LifecycleManager) Launch(pod *types.Pod, engineType, target string, env []types.EnvVar) error {
@@ -175,6 +235,20 @@ func (lm *LifecycleManager) Launch(pod *types.Pod, engineType, target string, en
 	mp.ready = true
 	mp.mu.Unlock()
 
+	// Broadcast ADDED event
+	lm.watchMu.Lock()
+	lm.resourceVersion++
+	rv := fmt.Sprintf("%d", lm.resourceVersion)
+	lm.watchMu.Unlock()
+
+	podCopy := *pod
+	if status, managed := lm.Status(pod.Metadata.Namespace, pod.Metadata.Name); managed {
+		podCopy.Status = status
+	}
+	podCopy.Metadata.ResourceVersion = rv
+
+	lm.broadcast(types.WatchEvent{Type: "ADDED", Object: podCopy})
+
 	go lm.monitor(ctx, mp, key)
 
 	return nil
@@ -183,12 +257,16 @@ func (lm *LifecycleManager) Launch(pod *types.Pod, engineType, target string, en
 func (lm *LifecycleManager) Terminate(namespace, name string) error {
 	key := podKey(namespace, name)
 
-	val, ok := lm.pods.LoadAndDelete(key)
+	val, ok := lm.pods.Load(key)
 	if !ok {
 		return fmt.Errorf("pod %s/%s not managed", namespace, name)
 	}
-
 	mp := val.(*managedPod)
+
+	// Get status before deleting
+	status, _ := lm.Status(namespace, name)
+
+	lm.pods.Delete(key)
 	mp.cancel()
 
 	mp.mu.Lock()
@@ -214,6 +292,18 @@ func (lm *LifecycleManager) Terminate(namespace, name string) error {
 	if eng, err := lm.registry.Get(mp.engineType); err == nil {
 		eng.Stop(name)
 	}
+
+	// Broadcast DELETED
+	lm.watchMu.Lock()
+	lm.resourceVersion++
+	rv := fmt.Sprintf("%d", lm.resourceVersion)
+	lm.watchMu.Unlock()
+
+	podCopy := mp.pod
+	podCopy.Status = status
+	podCopy.Metadata.ResourceVersion = rv
+
+	lm.broadcast(types.WatchEvent{Type: "DELETED", Object: podCopy})
 
 	return nil
 }
@@ -332,6 +422,7 @@ func (lm *LifecycleManager) monitor(ctx context.Context, mp *managedPod, key str
 			probes.stop()
 
 			if !lm.shouldRestart(&mp.pod, phase) {
+				lm.updatePodStatus(mp)
 				return
 			}
 
@@ -340,6 +431,8 @@ func (lm *LifecycleManager) monitor(ctx context.Context, mp *managedPod, key str
 			count := mp.restartCount
 			mp.ready = false
 			mp.mu.Unlock()
+
+			lm.updatePodStatus(mp)
 
 			backoff := lm.backoffDuration(count)
 			log.Printf("[lifecycle] pod %q exited (%s), restarting in %s (attempt %d)",
@@ -353,6 +446,7 @@ func (lm *LifecycleManager) monitor(ctx context.Context, mp *managedPod, key str
 
 			if err := eng.Start(ctx, &mp.pod, mp.target, mp.env, mp.projectedVolumes, mp.stdout, mp.stderr); err != nil {
 				log.Printf("[lifecycle] restart failed for pod %q: %v", mp.pod.Metadata.Name, err)
+				lm.updatePodStatus(mp)
 				return
 			}
 
@@ -361,6 +455,8 @@ func (lm *LifecycleManager) monitor(ctx context.Context, mp *managedPod, key str
 			mp.mu.Unlock()
 
 			probes = lm.newProbeSet(ctx, mp, eng)
+
+			lm.updatePodStatus(mp)
 
 			log.Printf("[lifecycle] pod %q restarted successfully", mp.pod.Metadata.Name)
 		}
@@ -389,13 +485,21 @@ func (lm *LifecycleManager) startProbes(ctx context.Context, mp *managedPod, eng
 		runner := NewProbeRunner(*c.ReadinessProbe, mp.pod.Metadata.Name, "readiness",
 			func() {
 				mp.mu.Lock()
+				wasReady := mp.ready
 				mp.ready = false
 				mp.mu.Unlock()
+				if wasReady {
+					lm.updatePodStatus(mp)
+				}
 			},
 			func() {
 				mp.mu.Lock()
+				wasReady := mp.ready
 				mp.ready = true
 				mp.mu.Unlock()
+				if !wasReady {
+					lm.updatePodStatus(mp)
+				}
 			},
 		)
 		go runner.Run(ctx)

@@ -7,9 +7,11 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/megawron/lok8s/discovery"
 	"github.com/megawron/lok8s/manifest"
 	"github.com/megawron/lok8s/service"
 	"github.com/megawron/lok8s/types"
@@ -93,25 +95,87 @@ func (s *Server) handleGetPod(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListPods(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("ns")
+	q := r.URL.Query()
+	labelSelector := q.Get("labelSelector")
+	fieldSelector := q.Get("fieldSelector")
+	watch := q.Get("watch") == "true" || q.Get("watch") == "1"
+
+	if watch {
+		s.handleWatchPods(w, r, ns, labelSelector, fieldSelector)
+		return
+	}
 
 	pods := s.allPods(ns)
 	if pods == nil {
 		pods = []types.Pod{}
 	}
 
+	filteredPods := make([]types.Pod, 0, len(pods))
 	for i := range pods {
 		if status, managed := s.lifecycle.Status(pods[i].Metadata.Namespace, pods[i].Metadata.Name); managed {
 			pods[i].Status = status
 		}
+		if discovery.MatchPod(&pods[i], labelSelector, fieldSelector) {
+			filteredPods = append(filteredPods, pods[i])
+		}
+	}
+
+	acceptHeader := r.Header.Get("Accept")
+	if strings.Contains(acceptHeader, "as=Table") {
+		table := discovery.ConvertPodsToTable(filteredPods)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(table)
+		return
 	}
 
 	list := types.PodList{
 		TypeMeta: types.TypeMeta{APIVersion: "v1", Kind: "PodList"},
-		Items:    pods,
+		Items:    filteredPods,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(list)
+}
+
+func (s *Server) handleWatchPods(w http.ResponseWriter, r *http.Request, ns, labelSelector, fieldSelector string) {
+	ctx := r.Context()
+	ch := s.lifecycle.Watch(ctx)
+
+	w.Header().Set("Content-Type", "application/json;stream=watch")
+	w.Header().Set("Transfer-Encoding", "chunked")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeStatus(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+
+	flusher.Flush()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event, open := <-ch:
+			if !open {
+				return
+			}
+			if ns != "" && event.Object.Metadata.Namespace != ns {
+				continue
+			}
+			if !discovery.MatchPod(&event.Object, labelSelector, fieldSelector) {
+				continue
+			}
+
+			data, err := json.Marshal(event)
+			if err != nil {
+				return
+			}
+			_, _ = w.Write(data)
+			_, _ = w.Write([]byte("\n"))
+			flusher.Flush()
+		}
+	}
 }
 
 func (s *Server) handleDeletePod(w http.ResponseWriter, r *http.Request) {
@@ -274,15 +338,33 @@ func (s *Server) handleCreateService(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("ns")
+	q := r.URL.Query()
+	labelSelector := q.Get("labelSelector")
+	fieldSelector := q.Get("fieldSelector")
 
 	svcs := s.services.List(ns)
 	if svcs == nil {
 		svcs = []types.Service{}
 	}
 
+	filteredSvcs := make([]types.Service, 0, len(svcs))
+	for i := range svcs {
+		if discovery.MatchService(&svcs[i], labelSelector, fieldSelector) {
+			filteredSvcs = append(filteredSvcs, svcs[i])
+		}
+	}
+
+	acceptHeader := r.Header.Get("Accept")
+	if strings.Contains(acceptHeader, "as=Table") {
+		table := discovery.ConvertServicesToTable(filteredSvcs)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(table)
+		return
+	}
+
 	list := types.ServiceList{
 		TypeMeta: types.TypeMeta{APIVersion: "v1", Kind: "ServiceList"},
-		Items:    svcs,
+		Items:    filteredSvcs,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -360,15 +442,33 @@ func (s *Server) handleCreateConfigMap(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListConfigMaps(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("ns")
+	q := r.URL.Query()
+	labelSelector := q.Get("labelSelector")
+	fieldSelector := q.Get("fieldSelector")
 
 	cms := s.configStore.ListConfigMaps(ns)
 	if cms == nil {
 		cms = []types.ConfigMap{}
 	}
 
+	filteredCms := make([]types.ConfigMap, 0, len(cms))
+	for i := range cms {
+		if discovery.MatchConfigMap(&cms[i], labelSelector, fieldSelector) {
+			filteredCms = append(filteredCms, cms[i])
+		}
+	}
+
+	acceptHeader := r.Header.Get("Accept")
+	if strings.Contains(acceptHeader, "as=Table") {
+		table := discovery.ConvertConfigMapsToTable(filteredCms)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(table)
+		return
+	}
+
 	list := types.ConfigMapList{
 		TypeMeta: types.TypeMeta{APIVersion: "v1", Kind: "ConfigMapList"},
-		Items:    cms,
+		Items:    filteredCms,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -445,15 +545,33 @@ func (s *Server) handleCreateSecret(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListSecrets(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("ns")
+	q := r.URL.Query()
+	labelSelector := q.Get("labelSelector")
+	fieldSelector := q.Get("fieldSelector")
 
 	secs := s.configStore.ListSecrets(ns)
 	if secs == nil {
 		secs = []types.Secret{}
 	}
 
+	filteredSecs := make([]types.Secret, 0, len(secs))
+	for i := range secs {
+		if discovery.MatchSecret(&secs[i], labelSelector, fieldSelector) {
+			filteredSecs = append(filteredSecs, secs[i])
+		}
+	}
+
+	acceptHeader := r.Header.Get("Accept")
+	if strings.Contains(acceptHeader, "as=Table") {
+		table := discovery.ConvertSecretsToTable(filteredSecs)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(table)
+		return
+	}
+
 	list := types.SecretList{
 		TypeMeta: types.TypeMeta{APIVersion: "v1", Kind: "SecretList"},
-		Items:    secs,
+		Items:    filteredSecs,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

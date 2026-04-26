@@ -14,6 +14,7 @@ type ObjectMeta struct {
 	Annotations       map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
 	Labels            map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 	CreationTimestamp time.Time         `json:"creationTimestamp,omitempty" yaml:"creationTimestamp,omitempty"`
+	ResourceVersion   string            `json:"resourceVersion,omitempty" yaml:"resourceVersion,omitempty"`
 }
 
 type EnvVar struct {
@@ -192,6 +193,52 @@ type Secret struct {
 type SecretList struct {
 	TypeMeta `json:",inline"`
 	Items    []Secret `json:"items"`
+}
+
+type RawExtension struct {
+	Raw []byte `json:"raw,omitempty"`
+}
+
+type TableColumnDefinition struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Format      string `json:"format"`
+	Description string `json:"description"`
+	Priority    int32  `json:"priority"`
+}
+
+type TableRow struct {
+	Cells  []interface{} `json:"cells"`
+	Object RawExtension  `json:"object,omitempty"`
+}
+
+type Table struct {
+	TypeMeta          `json:",inline"`
+	ColumnDefinitions []TableColumnDefinition `json:"columnDefinitions"`
+	Rows              []TableRow              `json:"rows"`
+}
+
+type APIGroupList struct {
+	Kind        string   `json:"kind"`
+	APIVersions []string `json:"versions"`
+}
+
+type APIResource struct {
+	Name       string   `json:"name"`
+	Namespaced bool     `json:"namespaced"`
+	Kind       string   `json:"kind"`
+	Verbs      []string `json:"verbs"`
+}
+
+type APIResourceList struct {
+	Kind         string        `json:"kind"`
+	GroupVersion string        `json:"groupVersion"`
+	APIResources []APIResource `json:"resources"`
+}
+
+type WatchEvent struct {
+	Type   string `json:"type"` // ADDED, MODIFIED, DELETED, ERROR
+	Object Pod    `json:"object"`
 }
 
 type StatusResponse struct {
