@@ -248,3 +248,63 @@ type StatusResponse struct {
 	Reason  string `json:"reason,omitempty"`
 	Code    int    `json:"code"`
 }
+
+type LabelSelector struct {
+	MatchLabels map[string]string `json:"matchLabels,omitempty" yaml:"matchLabels,omitempty"`
+}
+
+type PodTemplateSpec struct {
+	Metadata ObjectMeta `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Spec     PodSpec    `json:"spec,omitempty" yaml:"spec,omitempty"`
+}
+
+type DeploymentSpec struct {
+	Replicas *int32          `json:"replicas,omitempty" yaml:"replicas,omitempty"`
+	Selector *LabelSelector  `json:"selector" yaml:"selector"`
+	Template PodTemplateSpec `json:"template" yaml:"template"`
+}
+
+type DeploymentStatus struct {
+	Replicas            int32 `json:"replicas,omitempty" yaml:"replicas,omitempty"`
+	UpdatedReplicas     int32 `json:"updatedReplicas,omitempty" yaml:"updatedReplicas,omitempty"`
+	ReadyReplicas       int32 `json:"readyReplicas,omitempty" yaml:"readyReplicas,omitempty"`
+	AvailableReplicas   int32 `json:"availableReplicas,omitempty" yaml:"availableReplicas,omitempty"`
+	UnavailableReplicas int32 `json:"unavailableReplicas,omitempty" yaml:"unavailableReplicas,omitempty"`
+}
+
+type Deployment struct {
+	TypeMeta `json:",inline" yaml:",inline"`
+	Metadata ObjectMeta       `json:"metadata" yaml:"metadata"`
+	Spec     DeploymentSpec   `json:"spec" yaml:"spec"`
+	Status   DeploymentStatus `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+type DeploymentList struct {
+	TypeMeta `json:",inline"`
+	Items    []Deployment `json:"items"`
+}
+
+type ReplicaSetSpec struct {
+	Replicas *int32          `json:"replicas,omitempty" yaml:"replicas,omitempty"`
+	Selector *LabelSelector  `json:"selector" yaml:"selector"`
+	Template PodTemplateSpec `json:"template" yaml:"template"`
+}
+
+type ReplicaSetStatus struct {
+	Replicas             int32 `json:"replicas" yaml:"replicas"`
+	FullyLabeledReplicas int32 `json:"fullyLabeledReplicas,omitempty" yaml:"fullyLabeledReplicas,omitempty"`
+	ReadyReplicas        int32 `json:"readyReplicas,omitempty" yaml:"readyReplicas,omitempty"`
+	AvailableReplicas    int32 `json:"availableReplicas,omitempty" yaml:"availableReplicas,omitempty"`
+}
+
+type ReplicaSet struct {
+	TypeMeta `json:",inline" yaml:",inline"`
+	Metadata ObjectMeta       `json:"metadata" yaml:"metadata"`
+	Spec     ReplicaSetSpec   `json:"spec" yaml:"spec"`
+	Status   ReplicaSetStatus `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+type ReplicaSetList struct {
+	TypeMeta `json:",inline"`
+	Items    []ReplicaSet `json:"items"`
+}

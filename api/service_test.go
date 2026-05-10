@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/megawron/lok8s/config"
+	"github.com/megawron/lok8s/controller"
 	"github.com/megawron/lok8s/engine"
 	"github.com/megawron/lok8s/network"
 	"github.com/megawron/lok8s/types"
@@ -21,7 +22,7 @@ func TestServer_ServicesCRUD(t *testing.T) {
 	pool := network.NewPortPool(35000, 35500)
 	configStore := config.NewStore()
 	lm := engine.NewLifecycleManager(reg, pool, configStore)
-	srv := NewServer("127.0.0.1:0", lm, pool, configStore)
+	srv := NewServer("127.0.0.1:0", lm, pool, configStore, controller.NewStore())
 
 	ts := httptest.NewServer(srv.httpServer.Handler)
 	defer ts.Close()
@@ -139,7 +140,7 @@ func TestServer_ServicesCRUD_Invalid(t *testing.T) {
 	pool := network.NewPortPool(35501, 36000)
 	configStore := config.NewStore()
 	lm := engine.NewLifecycleManager(reg, pool, configStore)
-	srv := NewServer("127.0.0.1:0", lm, pool, configStore)
+	srv := NewServer("127.0.0.1:0", lm, pool, configStore, controller.NewStore())
 
 	ts := httptest.NewServer(srv.httpServer.Handler)
 	defer ts.Close()

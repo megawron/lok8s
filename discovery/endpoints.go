@@ -18,8 +18,22 @@ func HandleAPIRoot(w http.ResponseWriter, r *http.Request) {
 func HandleAPIs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"kind":   "APIGroupList",
-		"groups": []interface{}{},
+		"kind": "APIGroupList",
+		"groups": []interface{}{
+			map[string]interface{}{
+				"name": "apps",
+				"versions": []interface{}{
+					map[string]interface{}{
+						"groupVersion": "apps/v1",
+						"version":      "v1",
+					},
+				},
+				"preferredVersion": map[string]interface{}{
+					"groupVersion": "apps/v1",
+					"version":      "v1",
+				},
+			},
+		},
 	})
 }
 
@@ -64,5 +78,20 @@ func HandleOpenIDConfig(w http.ResponseWriter, r *http.Request) {
 		"response_types_supported":              []string{"code"},
 		"subject_types_supported":               []string{"public"},
 		"id_token_signing_alg_values_supported": []string{"RS256"},
+	})
+}
+
+func HandleAPIsAppsV1(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	resources := []types.APIResource{
+		{Name: "deployments", Namespaced: true, Kind: "Deployment", Verbs: []string{"create", "delete", "get", "list", "watch", "update"}},
+		{Name: "replicasets", Namespaced: true, Kind: "ReplicaSet", Verbs: []string{"create", "delete", "get", "list", "watch", "update"}},
+	}
+
+	json.NewEncoder(w).Encode(types.APIResourceList{
+		Kind:         "APIResourceList",
+		GroupVersion: "apps/v1",
+		APIResources: resources,
 	})
 }

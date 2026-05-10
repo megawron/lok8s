@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/megawron/lok8s/config"
+	"github.com/megawron/lok8s/controller"
 	"github.com/megawron/lok8s/engine"
 	"github.com/megawron/lok8s/network"
 	"github.com/megawron/lok8s/types"
@@ -63,7 +64,7 @@ func TestServer_GetPodLogs(t *testing.T) {
 	pool := network.NewPortPool(30000, 32767)
 	configStore := config.NewStore()
 	lm := engine.NewLifecycleManager(reg, pool, configStore)
-	srv := NewServer("127.0.0.1:0", lm, pool, configStore)
+	srv := NewServer("127.0.0.1:0", lm, pool, configStore, controller.NewStore())
 
 	// We can test the HTTP handler directly using httptest.NewRecorder() or httptest.NewServer()
 	// Let's use httptest.NewServer to properly test streaming / follow.
@@ -190,7 +191,7 @@ func TestServer_GetPodLogs_InvalidParams(t *testing.T) {
 	pool := network.NewPortPool(30000, 32767)
 	configStore := config.NewStore()
 	lm := engine.NewLifecycleManager(reg, pool, configStore)
-	srv := NewServer("127.0.0.1:0", lm, pool, configStore)
+	srv := NewServer("127.0.0.1:0", lm, pool, configStore, controller.NewStore())
 
 	ts := httptest.NewServer(srv.httpServer.Handler)
 	defer ts.Close()

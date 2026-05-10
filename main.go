@@ -11,6 +11,7 @@ import (
 
 	"github.com/megawron/lok8s/api"
 	"github.com/megawron/lok8s/config"
+	"github.com/megawron/lok8s/controller"
 	"github.com/megawron/lok8s/engine"
 	"github.com/megawron/lok8s/network"
 )
@@ -38,11 +39,21 @@ func main() {
 
 	portPool := network.NewPortPool(30000, 32767)
 	configStore := config.NewStore()
+	controllerStore := controller.NewStore()
+
 	lifecycle := engine.NewLifecycleManager(registry, portPool, configStore)
-	srv := api.NewServer(*addr, lifecycle, portPool, configStore)
+	srv := api.NewServer(*addr, lifecycle, portPool, configStore, controllerStore)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Initialize and start controllers
+	rsController := controller.NewReplicaSetController(controllerStore, srv)
+	depController := controller.NewDeploymentController(controllerStore)
+
+	log.Println("Starting ReplicaSet and Deployment controllers")
+	rsController.Start(ctx)
+	depController.Start(ctx)
 
 	errCh := make(chan error, 1)
 	go func() {

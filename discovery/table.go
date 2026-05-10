@@ -185,3 +185,78 @@ func translateTimestamp(timestamp time.Time) string {
 	}
 	return fmt.Sprintf("%dd", int(diff.Hours()/24))
 }
+
+func ConvertDeploymentsToTable(deps []types.Deployment) *types.Table {
+	t := &types.Table{
+		TypeMeta: types.TypeMeta{
+			APIVersion: "meta.k8s.io/v1",
+			Kind:       "Table",
+		},
+		ColumnDefinitions: []types.TableColumnDefinition{
+			{Name: "Name", Type: "string", Format: "name"},
+			{Name: "Ready", Type: "string"},
+			{Name: "Up-to-date", Type: "integer"},
+			{Name: "Available", Type: "integer"},
+			{Name: "Age", Type: "string"},
+		},
+		Rows: make([]types.TableRow, 0, len(deps)),
+	}
+
+	for _, dep := range deps {
+		desired := int32(1)
+		if dep.Spec.Replicas != nil {
+			desired = *dep.Spec.Replicas
+		}
+		readyStr := fmt.Sprintf("%d/%d", dep.Status.ReadyReplicas, desired)
+		depBytes, _ := json.Marshal(dep)
+		row := types.TableRow{
+			Cells: []interface{}{
+				dep.Metadata.Name,
+				readyStr,
+				int(dep.Status.UpdatedReplicas),
+				int(dep.Status.AvailableReplicas),
+				translateTimestamp(dep.Metadata.CreationTimestamp),
+			},
+			Object: types.RawExtension{Raw: depBytes},
+		}
+		t.Rows = append(t.Rows, row)
+	}
+	return t
+}
+
+func ConvertReplicaSetsToTable(rss []types.ReplicaSet) *types.Table {
+	t := &types.Table{
+		TypeMeta: types.TypeMeta{
+			APIVersion: "meta.k8s.io/v1",
+			Kind:       "Table",
+		},
+		ColumnDefinitions: []types.TableColumnDefinition{
+			{Name: "Name", Type: "string", Format: "name"},
+			{Name: "Desired", Type: "integer"},
+			{Name: "Current", Type: "integer"},
+			{Name: "Ready", Type: "integer"},
+			{Name: "Age", Type: "string"},
+		},
+		Rows: make([]types.TableRow, 0, len(rss)),
+	}
+
+	for _, rs := range rss {
+		desired := int32(1)
+		if rs.Spec.Replicas != nil {
+			desired = *rs.Spec.Replicas
+		}
+		rsBytes, _ := json.Marshal(rs)
+		row := types.TableRow{
+			Cells: []interface{}{
+				rs.Metadata.Name,
+				int(desired),
+				int(rs.Status.Replicas),
+				int(rs.Status.ReadyReplicas),
+				translateTimestamp(rs.Metadata.CreationTimestamp),
+			},
+			Object: types.RawExtension{Raw: rsBytes},
+		}
+		t.Rows = append(t.Rows, row)
+	}
+	return t
+}
