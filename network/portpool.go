@@ -61,3 +61,20 @@ func (p *PortPool) Lookup(id string) (int, error) {
 	}
 	return 0, fmt.Errorf("no port allocated for %q", id)
 }
+
+func (p *PortPool) Reserve(id string, port int) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if owner, used := p.usedPorts[port]; used {
+		if owner == id {
+			return nil
+		}
+		return fmt.Errorf("port %d already allocated to %s", port, owner)
+	}
+
+	p.allocated[id] = port
+	p.usedPorts[port] = id
+	return nil
+}
+

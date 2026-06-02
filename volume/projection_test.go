@@ -10,7 +10,7 @@ import (
 )
 
 func TestProjectVolumes(t *testing.T) {
-	store := config.NewStore()
+	store := config.NewStore(nil)
 
 	// 1. Create a ConfigMap and a Secret in the store
 	cm := types.ConfigMap{

@@ -7,7 +7,7 @@ import (
 )
 
 func TestDeploymentController_Reconcile(t *testing.T) {
-	store := NewStore()
+	store := NewStore(nil)
 	dc := NewDeploymentController(store)
 
 	replicas := int32(2)

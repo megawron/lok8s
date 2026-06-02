@@ -157,7 +157,7 @@ func TestServiceProxy_LoadBalancing(t *testing.T) {
 }
 
 func TestGenerateServiceEnv(t *testing.T) {
-	store := NewStore()
+	store := NewStore(nil)
 	pool := network.NewPortPool(38000, 38100)
 	lister := &mockPodLister{}
 	pm := NewProxyManager(lister, pool)

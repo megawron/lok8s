@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/megawron/lok8s/manifest"
 	"github.com/megawron/lok8s/network"
 	"github.com/megawron/lok8s/service"
+	"github.com/megawron/lok8s/store"
 	"github.com/megawron/lok8s/types"
 )
 
@@ -26,16 +28,31 @@ type Server struct {
 	configStore     *config.Store
 	controllerStore *controller.Store
 	pods            sync.Map
+	db              *store.DB
+	portPool        *network.PortPool
 }
 
-func NewServer(addr string, lifecycle *engine.LifecycleManager, portPool *network.PortPool, configStore *config.Store, controllerStore *controller.Store) *Server {
+func NewServer(addr string, lifecycle *engine.LifecycleManager, portPool *network.PortPool, configStore *config.Store, controllerStore *controller.Store, db *store.DB) *Server {
 	s := &Server{
 		lifecycle:       lifecycle,
-		services:        service.NewStore(),
+		services:        service.NewStore(db),
 		proxyManager:    service.NewProxyManager(lifecycle, portPool),
 		configStore:     configStore,
 		controllerStore: controllerStore,
+		db:              db,
+		portPool:        portPool,
 	}
+
+	if db != nil {
+		_ = db.List("pods", func(key, val []byte) error {
+			var pod types.Pod
+			if err := json.Unmarshal(val, &pod); err == nil {
+				s.pods.Store(string(key), pod)
+			}
+			return nil
+		})
+	}
+
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/namespaces/{ns}/pods", s.handleCreatePod)
@@ -91,6 +108,9 @@ func NewServer(addr string, lifecycle *engine.LifecycleManager, portPool *networ
 func (s *Server) storePod(pod types.Pod) {
 	key := pod.Metadata.Namespace + "/" + pod.Metadata.Name
 	s.pods.Store(key, pod)
+	if s.db != nil {
+		_ = s.db.Put("pods", key, pod)
+	}
 }
 
 func (s *Server) loadPod(namespace, name string) (types.Pod, bool) {
@@ -102,7 +122,11 @@ func (s *Server) loadPod(namespace, name string) (types.Pod, bool) {
 }
 
 func (s *Server) deletePod(namespace, name string) {
-	s.pods.Delete(namespace + "/" + name)
+	key := namespace + "/" + name
+	s.pods.Delete(key)
+	if s.db != nil {
+		_ = s.db.Delete("pods", key)
+	}
 }
 
 func (s *Server) allPods(namespace string) []types.Pod {
@@ -129,8 +153,52 @@ func (s *Server) ListenAndServe() error {
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	log.Println("lok8s apiserver shutting down")
+	s.proxyManager.Shutdown()
 	return s.httpServer.Shutdown(ctx)
 }
+
+func (s *Server) RecoverState() {
+	log.Println("Recovering lok8s state...")
+
+	// 1. Recover Service Proxies
+	svcs := s.services.List("")
+	for _, svc := range svcs {
+		if len(svc.Spec.Ports) > 0 {
+			nodePort := svc.Spec.Ports[0].NodePort
+			if nodePort > 0 {
+				key := svc.Metadata.Namespace + "/" + svc.Metadata.Name
+				if s.portPool != nil {
+					_ = s.portPool.Reserve(key, nodePort)
+				}
+				_, err := s.proxyManager.StartProxy(&svc)
+				if err != nil {
+					log.Printf("Failed to recover service proxy for %s: %v", key, err)
+				} else {
+					log.Printf("Recovered service proxy for %s on port %d", key, nodePort)
+				}
+			}
+		}
+	}
+
+	// 2. Recover Pods
+	pods := s.allPods("")
+	for _, pod := range pods {
+		if pod.Status.Phase == types.PodRunning || pod.Status.Phase == types.PodPending {
+			key := pod.Metadata.Namespace + "/" + pod.Metadata.Name
+			if pod.Status.HostPort > 0 && s.portPool != nil {
+				_ = s.portPool.Reserve(key, pod.Status.HostPort)
+			}
+			log.Printf("Recovering pod %s", key)
+			err := s.LaunchPod(&pod)
+			if err != nil {
+				log.Printf("Failed to relaunch pod %s: %v", key, err)
+			} else {
+				log.Printf("Relaunched pod %s successfully", key)
+			}
+		}
+	}
+}
+
 
 // PodManager implementation methods
 func (s *Server) StorePod(pod types.Pod) {

@@ -237,3 +237,15 @@ func (pm *ProxyManager) StopProxy(namespace, name string) {
 		pm.portPool.Release(key)
 	}
 }
+
+func (pm *ProxyManager) Shutdown() {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	for key, sp := range pm.proxies {
+		sp.Close()
+		pm.portPool.Release(key)
+	}
+	pm.proxies = make(map[string]*ServiceProxy)
+}
+

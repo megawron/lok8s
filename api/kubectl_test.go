@@ -26,9 +26,9 @@ func TestKubectlCompatibility(t *testing.T) {
 	reg.Register("mock", mockEng)
 
 	pool := network.NewPortPool(30000, 32767)
-	configStore := config.NewStore()
+	configStore := config.NewStore(nil)
 	lm := engine.NewLifecycleManager(reg, pool, configStore)
-	srv := NewServer("127.0.0.1:0", lm, pool, configStore, controller.NewStore())
+	srv := NewServer("127.0.0.1:0", lm, pool, configStore, controller.NewStore(nil), nil)
 
 	ts := httptest.NewServer(srv.httpServer.Handler)
 	defer ts.Close()

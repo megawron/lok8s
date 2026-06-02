@@ -24,11 +24,11 @@ func TestServer_DeploymentLifecycle(t *testing.T) {
 	reg.Register("native", mockEng)
 
 	pool := network.NewPortPool(30000, 32767)
-	configStore := config.NewStore()
-	controllerStore := controller.NewStore()
+	configStore := config.NewStore(nil)
+	controllerStore := controller.NewStore(nil)
 	lm := engine.NewLifecycleManager(reg, pool, configStore)
 
-	srv := NewServer("127.0.0.1:0", lm, pool, configStore, controllerStore)
+	srv := NewServer("127.0.0.1:0", lm, pool, configStore, controllerStore, nil)
 
 	ts := httptest.NewServer(srv.httpServer.Handler)
 	defer ts.Close()

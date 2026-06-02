@@ -563,3 +563,17 @@ func (lm *LifecycleManager) runInitContainers(ctx context.Context, podName strin
 func podKey(namespace, name string) string {
 	return namespace + "/" + name
 }
+
+func (lm *LifecycleManager) Shutdown() {
+	var pods []types.Pod
+	lm.pods.Range(func(key, value any) bool {
+		mp := value.(*managedPod)
+		pods = append(pods, mp.pod)
+		return true
+	})
+
+	for _, pod := range pods {
+		_ = lm.Terminate(pod.Metadata.Namespace, pod.Metadata.Name)
+	}
+}
+

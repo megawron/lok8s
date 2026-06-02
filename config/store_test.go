@@ -8,7 +8,7 @@ import (
 )
 
 func TestStore_ConfigMap(t *testing.T) {
-	s := NewStore()
+	s := NewStore(nil)
 
 	cm := types.ConfigMap{
 		Metadata: types.ObjectMeta{
@@ -45,7 +45,7 @@ func TestStore_ConfigMap(t *testing.T) {
 }
 
 func TestStore_Secret(t *testing.T) {
-	s := NewStore()
+	s := NewStore(nil)
 
 	sec := types.Secret{
 		Metadata: types.ObjectMeta{

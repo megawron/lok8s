@@ -46,7 +46,7 @@ func (m *mockPodManager) ListPods(namespace string) []types.Pod {
 }
 
 func TestReplicaSetController_Reconcile(t *testing.T) {
-	store := NewStore()
+	store := NewStore(nil)
 	pm := newMockPodManager()
 	rsc := NewReplicaSetController(store, pm)
 
@@ -143,7 +143,7 @@ func TestReplicaSetController_Reconcile(t *testing.T) {
 }
 
 func TestReplicaSetController_NonOwnedPods(t *testing.T) {
-	store := NewStore()
+	store := NewStore(nil)
 	pm := newMockPodManager()
 	rsc := NewReplicaSetController(store, pm)
 
