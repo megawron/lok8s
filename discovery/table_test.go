@@ -17,7 +17,8 @@ func TestConvertPodsToTable(t *testing.T) {
 				CreationTimestamp: now.Add(-10 * time.Minute),
 			},
 			Status: types.PodStatus{
-				Phase: types.PodRunning,
+				Phase:    types.PodRunning,
+				HostPort: 8080,
 				ContainerStatuses: []types.ContainerStatus{
 					{
 						Ready:        true,
@@ -45,15 +46,15 @@ func TestConvertPodsToTable(t *testing.T) {
 		t.Errorf("Expected Kind 'Table', got %q", table.Kind)
 	}
 
-	if len(table.ColumnDefinitions) != 5 {
-		t.Errorf("Expected 5 columns, got %d", len(table.ColumnDefinitions))
+	if len(table.ColumnDefinitions) != 6 {
+		t.Errorf("Expected 6 columns, got %d", len(table.ColumnDefinitions))
 	}
 
 	if len(table.Rows) != 2 {
 		t.Fatalf("Expected 2 rows, got %d", len(table.Rows))
 	}
 
-	// Verify pod-1 row cells: Name, Ready, Status, Restarts, Age
+	// Verify pod-1 row cells: Name, Ready, Status, Port, Restarts, Age
 	row1 := table.Rows[0]
 	if row1.Cells[0] != "pod-1" {
 		t.Errorf("Expected cell 0 to be 'pod-1', got %v", row1.Cells[0])
@@ -64,14 +65,17 @@ func TestConvertPodsToTable(t *testing.T) {
 	if row1.Cells[2] != "Running" {
 		t.Errorf("Expected cell 2 to be 'Running', got %v", row1.Cells[2])
 	}
-	if row1.Cells[3] != "2" {
-		t.Errorf("Expected cell 3 to be '2', got %v", row1.Cells[3])
+	if row1.Cells[3] != "8080" {
+		t.Errorf("Expected cell 3 to be '8080', got %v", row1.Cells[3])
 	}
-	if row1.Cells[4] != "10m" {
-		t.Errorf("Expected cell 4 to be '10m', got %v", row1.Cells[4])
+	if row1.Cells[4] != "2" {
+		t.Errorf("Expected cell 4 to be '2', got %v", row1.Cells[4])
+	}
+	if row1.Cells[5] != "10m" {
+		t.Errorf("Expected cell 5 to be '10m', got %v", row1.Cells[5])
 	}
 
-	// Verify pod-2 row cells
+	// Verify pod-2 row cells: Name, Ready, Status, Port, Restarts, Age
 	row2 := table.Rows[1]
 	if row2.Cells[0] != "pod-2" {
 		t.Errorf("Expected cell 0 to be 'pod-2', got %v", row2.Cells[0])
@@ -82,11 +86,14 @@ func TestConvertPodsToTable(t *testing.T) {
 	if row2.Cells[2] != "Pending" {
 		t.Errorf("Expected cell 2 to be 'Pending', got %v", row2.Cells[2])
 	}
-	if row2.Cells[3] != "0" {
-		t.Errorf("Expected cell 3 to be '0', got %v", row2.Cells[3])
+	if row2.Cells[3] != "<none>" {
+		t.Errorf("Expected cell 3 to be '<none>', got %v", row2.Cells[3])
 	}
-	if row2.Cells[4] != "50s" {
-		t.Errorf("Expected cell 4 to be '50s', got %v", row2.Cells[4])
+	if row2.Cells[4] != "0" {
+		t.Errorf("Expected cell 4 to be '0', got %v", row2.Cells[4])
+	}
+	if row2.Cells[5] != "50s" {
+		t.Errorf("Expected cell 5 to be '50s', got %v", row2.Cells[5])
 	}
 }
 

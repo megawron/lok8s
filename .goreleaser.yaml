@@ -9,20 +9,9 @@ before:
     - go mod tidy
 
 builds:
-  - id: lok8s-apiserver
-    binary: lok8s-apiserver
-    main: ./main.go
-    goos:
-      - linux
-      - windows
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-
-  - id: lok8s-cli
+  - id: lok8s
     binary: lok8s
-    main: ./cmd/lok8s/main.go
+    main: ./main.go
     goos:
       - linux
       - windows

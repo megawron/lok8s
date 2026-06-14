@@ -87,7 +87,7 @@ spec:
 	}
 
 	// 1. Run CLI "apply" to deploy
-	cmd := exec.Command("go", "run", "../cmd/lok8s/main.go", "-s", ts.URL, "apply", "-f", manifestPath)
+	cmd := exec.Command("go", "run", "../main.go", "-s", ts.URL, "apply", "-f", manifestPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("cli apply failed: %v, output: %s", err, string(output))
@@ -100,7 +100,7 @@ spec:
 	time.Sleep(1500 * time.Millisecond)
 
 	// 2. Run CLI "get deployments"
-	cmd = exec.Command("go", "run", "../cmd/lok8s/main.go", "-s", ts.URL, "get", "deployments")
+	cmd = exec.Command("go", "run", "../main.go", "-s", ts.URL, "get", "deployments")
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("cli get deployments failed: %v, output: %s", err, string(output))
@@ -110,7 +110,7 @@ spec:
 	}
 
 	// 3. Run CLI "get pods" and verify 2 pods are listed
-	cmd = exec.Command("go", "run", "../cmd/lok8s/main.go", "-s", ts.URL, "get", "pods")
+	cmd = exec.Command("go", "run", "../main.go", "-s", ts.URL, "get", "pods")
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("cli get pods failed: %v, output: %s", err, string(output))
@@ -128,7 +128,7 @@ spec:
 	}
 
 	// 4. Run CLI "delete deployment e2e-deployment"
-	cmd = exec.Command("go", "run", "../cmd/lok8s/main.go", "-s", ts.URL, "delete", "deployment", "e2e-deployment")
+	cmd = exec.Command("go", "run", "../main.go", "-s", ts.URL, "delete", "deployment", "e2e-deployment")
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("cli delete deployment failed: %v, output: %s", err, string(output))
@@ -141,7 +141,7 @@ spec:
 	time.Sleep(1500 * time.Millisecond)
 
 	// 5. Verify no pods exist
-	cmd = exec.Command("go", "run", "../cmd/lok8s/main.go", "-s", ts.URL, "get", "pods")
+	cmd = exec.Command("go", "run", "../main.go", "-s", ts.URL, "get", "pods")
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("cli get pods failed: %v, output: %s", err, string(output))

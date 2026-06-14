@@ -14,20 +14,19 @@ Edited implementation_plan.md
 
 Die vollständige Roadmap steht. Hier die Kurzfassung:
 
-### 9 verbleibende Meilensteine
+### Status der Meilensteine (Alle abgeschlossen)
 
-| # | Meilenstein | Kern-Feature | Neue Pakete |
-|:-:|:-----------:|-------------|-------------|
-| **M2** | Service-Networking | Port-Allokation, Service-Discovery, Reverse-Proxy | `network/`, `service/` |
-| **M3** | ConfigMaps & Secrets | K8s-konforme Config-Verwaltung, Volume-Projektion | `config/`, `volume/` |
-| **M4** | Pod-Lifecycle | Restart-Policies, Init-Container, Health-Probes | `engine/lifecycle.go`, `engine/health.go` |
-| **M5** | Log-Streaming | Ring-Buffer, SSE-Stream, `kubectl logs`-Äquivalent | `logs/` |
-| **M6** | kubectl-Kompatibilität | API-Discovery, Watch, Table-Format, Label-Selectors | `discovery/` |
-| **M7** | Deployments | ReplicaSets, Rolling Updates, Reconciliation-Loops | `controller/` |
-| **M8** | lok8s CLI | `lok8s apply`, `lok8s logs`, `lok8s get pods` | `cmd/lok8s/` |
-| **M9** | Persistenz | bbolt-Store, State-Recovery nach Neustart | `store/` |
-| **M10** | Testing & Release | Unit/E2E-Tests, CI/CD, goreleaser, Docs | `test/`, `.github/` |
+| # | Meilenstein | Kern-Feature | Status |
+|:-:|:-----------:|-------------|:------:|
+| **M1** | Analyse & Roadmap | Erstellung des Implementierungsplans | Erledigt |
+| **M2** | Service-Networking | Port-Allokation, Service-Discovery, Reverse-Proxy | Erledigt |
+| **M3** | ConfigMaps & Secrets | K8s-konforme Config-Verwaltung, Volume-Projektion | Erledigt |
+| **M4** | Pod-Lifecycle | Restart-Policies, Init-Container, Health-Probes | Erledigt |
+| **M5** | Log-Streaming | Ring-Buffer, SSE-Stream, `kubectl logs`-Äquivalent | Erledigt |
+| **M6** | kubectl-Kompatibilität | API-Discovery, Watch, Table-Format, Label-Selectors | Erledigt |
+| **M7** | Deployments | ReplicaSets, Rolling Updates, Reconciliation-Loops | Erledigt |
+| **M8** | lok8s CLI | `lok8s apply`, `lok8s logs`, `lok8s get pods` | Erledigt |
+| **M9** | Persistenz | bbolt-Store, State-Recovery nach Neustart | Erledigt |
+| **M10** | Testing & Release | Unit/E2E-Tests, CI/CD, GoReleaser, Docs | Erledigt |
 
-**Empfehlung:** M4 (Lifecycle) zuerst, dann M5 (Logs), dann M2 (Networking) — das bringt den größten Developer-Nutzen am schnellsten.
-
-Schau dir den Plan an und sag mir, welchen Meilenstein wir als nächstes angehen sollen, oder ob du die Reihenfolge anders priorisieren willst.
+Das Projekt `lok8s` ist damit vollständig umgesetzt, gründlich getestet und releasebereit.

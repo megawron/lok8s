@@ -19,6 +19,7 @@ func ConvertPodsToTable(pods []types.Pod) *types.Table {
 			{Name: "Name", Type: "string", Format: "name", Description: "Name of the pod"},
 			{Name: "Ready", Type: "string", Description: "Ready status"},
 			{Name: "Status", Type: "string", Description: "Phase status"},
+			{Name: "Port", Type: "string", Description: "Allocated host port"},
 			{Name: "Restarts", Type: "string", Description: "Number of restarts"},
 			{Name: "Age", Type: "string", Description: "Creation age"},
 		},
@@ -40,6 +41,11 @@ func ConvertPodsToTable(pods []types.Pod) *types.Table {
 			restarts = pod.Status.RestartCount
 		}
 
+		portStr := "<none>"
+		if pod.Status.HostPort > 0 {
+			portStr = fmt.Sprintf("%d", pod.Status.HostPort)
+		}
+
 		ageStr := translateTimestamp(pod.Metadata.CreationTimestamp)
 		podBytes, _ := json.Marshal(pod)
 
@@ -48,6 +54,7 @@ func ConvertPodsToTable(pods []types.Pod) *types.Table {
 				pod.Metadata.Name,
 				readyStr,
 				string(pod.Status.Phase),
+				portStr,
 				fmt.Sprintf("%d", restarts),
 				ageStr,
 			},
