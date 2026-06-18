@@ -1,0 +1,14 @@
+# Binaries
+lok8s
+lok8s.exe
+
+# GoReleaser output
+dist/
+
+# Local databases & state
+lok8s.db
+lok8s.db.lock
+
+# Test outputs
+*.test
+*.out
