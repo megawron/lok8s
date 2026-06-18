@@ -28,6 +28,27 @@ lok8s (pronounced Local-K8s) lets you deploy your unmodified production Kubernet
 | **CPU Overhead (Idle)** | **0%** | 5 – 15% | 10 – 25% |
 | **Offline Capability** | **100% Offline** | Needs registry/pulls | Needs registry/pulls |
 
+---
+
+## Perfect Use Cases
+
+`lok8s` is designed to be the ultimate companion for specific, high-friction stages of Kubernetes development:
+
+1. **⚡ Rapid Microservice Prototyping (Sub-Second Iteration)**
+   * **The Pain:** You edit one line of code, then wait 30–60 seconds for `docker build`, local registry push, image pull, and container boot.
+   * **The Solution:** Press save, compile natively (e.g. `go build` or `cargo build`), and `lok8s` starts or restarts the pod in **under 2 milliseconds**. The loop is as fast as modern frontend hot-reloads.
+2. **🐛 Direct IDE Debugging (Breakpoints & Step-Through)**
+   * **The Pain:** Debugging code running inside containers is complex, requiring exposed debugger ports, SSH tunnels, or custom images.
+   * **The Solution:** Because `lok8s` runs pods as native processes on your host, you can attach your IDE debugger (VS Code, GoLand, IntelliJ, etc.) directly to the running process for instant breakpoints.
+3. **🔋 Battery & Resource Preservation (Silent Dev)**
+   * **The Pain:** Running Minikube or Docker Desktop drains 2–4 GB of RAM and 15% CPU on idle, generating laptop fan noise and draining your battery in 1–2 hours.
+   * **The Solution:** `lok8s` uses **25 MB RAM and 0% CPU** on idle. Develop completely offline on a train or plane in absolute silence.
+4. **🧪 Instant Integration Testing (Sub-Second CI/CD Pipelines)**
+   * **The Pain:** Integration test pipelines wait 2–3 minutes just for a local Kind or Minikube cluster to boot up in GitHub Actions or GitLab CI.
+   * **The Solution:** `lok8s` starts in **5 milliseconds**. Run full integration tests against the Kubernetes API instantly, saving developer time and runner costs.
+
+---
+
 ## How it Works & Trade-offs (The Honest Truth)
 
 `lok8s` achieves sub-millisecond startup and near-zero overhead by completely bypassing container daemons, image builds, and virtual machines. 
