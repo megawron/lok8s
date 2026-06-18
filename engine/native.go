@@ -32,8 +32,9 @@ func NewNativeEngine() *NativeEngine {
 }
 
 func (e *NativeEngine) Start(ctx context.Context, pod *types.Pod, target string, env []types.EnvVar, volumes map[string]string, stdout, stderr io.Writer) error {
-	if _, err := os.Stat(target); err != nil {
-		return fmt.Errorf("binary not found: %w", err)
+	resolvedTarget, err := resolveExecutable(target)
+	if err != nil {
+		return err
 	}
 
 	e.mu.RLock()
@@ -70,14 +71,14 @@ func (e *NativeEngine) Start(ctx context.Context, pod *types.Pod, target string,
 		args = append(args, c.Args...)
 	}
 
-	cmd := exec.CommandContext(procCtx, target, args...)
+	cmd := exec.CommandContext(procCtx, resolvedTarget, args...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	cmd.Env = buildOSEnv(env)
 
 	if err := cmd.Start(); err != nil {
 		cancel()
-		return fmt.Errorf("start %q: %w", target, err)
+		return fmt.Errorf("start %q (resolved: %q): %w", target, resolvedTarget, err)
 	}
 
 	np := &nativeProc{
@@ -90,7 +91,7 @@ func (e *NativeEngine) Start(ctx context.Context, pod *types.Pod, target string,
 	e.procs[pod.Metadata.Name] = np
 	e.mu.Unlock()
 
-	log.Printf("[native] pod %q started (pid %d)", pod.Metadata.Name, cmd.Process.Pid)
+	log.Printf("[native] pod %q started (pid %d, resolved target: %q)", pod.Metadata.Name, cmd.Process.Pid, resolvedTarget)
 
 	go func() {
 		err := cmd.Wait()
@@ -184,4 +185,46 @@ func copyDir(src, dst string) error {
 		}
 	}
 	return nil
+}
+
+func resolveExecutable(target string) (string, error) {
+	// 1. Check if target is a direct absolute or relative path that exists
+	if _, err := os.Stat(target); err == nil {
+		return target, nil
+	}
+
+	// 2. Check if it's in the current directory (e.g. "./target")
+	localPath := "./" + target
+	if _, err := os.Stat(localPath); err == nil {
+		return localPath, nil
+	}
+
+	// 2a. On Windows, check for ".exe" suffix
+	localPathExe := "./" + target + ".exe"
+	if _, err := os.Stat(localPathExe); err == nil {
+		return localPathExe, nil
+	}
+
+	targetExe := target + ".exe"
+	if _, err := os.Stat(targetExe); err == nil {
+		return targetExe, nil
+	}
+
+	// 3. Check in a "./bin" folder
+	binPath := filepath.Join(".", "bin", target)
+	if _, err := os.Stat(binPath); err == nil {
+		return binPath, nil
+	}
+	binPathExe := filepath.Join(".", "bin", target+".exe")
+	if _, err := os.Stat(binPathExe); err == nil {
+		return binPathExe, nil
+	}
+
+	// 4. Try looking up in system PATH
+	pathLook, err := exec.LookPath(target)
+	if err == nil {
+		return pathLook, nil
+	}
+
+	return "", fmt.Errorf("executable %q not found in current dir, ./bin/, or system PATH", target)
 }

@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/megawron/lok8s/types"
 	"gopkg.in/yaml.v3"
@@ -47,28 +50,59 @@ func ExtractEngineConfig(pod *types.Pod) (engineType string, target string, err 
 	execPath, hasExec := annotations[AnnotationExecutablePath]
 	wasmPath, hasWasm := annotations[AnnotationWasmModule]
 
-	switch {
-	case hasExec && hasWasm:
+	if hasExec && hasWasm {
 		return "", "", fmt.Errorf(
 			"pod %q has both %s and %s; pick one",
 			pod.Metadata.Name, AnnotationExecutablePath, AnnotationWasmModule,
 		)
-	case hasExec:
+	}
+	if hasExec {
 		if execPath == "" {
 			return "", "", fmt.Errorf("annotation %s is empty", AnnotationExecutablePath)
 		}
 		return EngineNative, execPath, nil
-	case hasWasm:
+	}
+	if hasWasm {
 		if wasmPath == "" {
 			return "", "", fmt.Errorf("annotation %s is empty", AnnotationWasmModule)
 		}
 		return EngineWasm, wasmPath, nil
-	default:
-		return "", "", fmt.Errorf(
-			"pod %q missing engine annotation (%s or %s)",
-			pod.Metadata.Name, AnnotationExecutablePath, AnnotationWasmModule,
-		)
 	}
+
+	// Fallback to Image name if annotations are missing
+	if len(pod.Spec.Containers) > 0 {
+		image := pod.Spec.Containers[0].Image
+		if image != "" {
+			parts := strings.Split(image, "/")
+			lastPart := parts[len(parts)-1]
+			imageName := strings.Split(lastPart, ":")[0]
+
+			// Check if imageName has .wasm extension
+			if strings.HasSuffix(imageName, ".wasm") {
+				return EngineWasm, imageName, nil
+			}
+
+			// Candidates for wasm modules locally
+			wasmCandidates := []string{
+				imageName + ".wasm",
+				"./" + imageName + ".wasm",
+				filepath.Join(".", "bin", imageName+".wasm"),
+			}
+			for _, c := range wasmCandidates {
+				if _, err := os.Stat(c); err == nil {
+					return EngineWasm, c, nil
+				}
+			}
+
+			// Otherwise default to running natively by searching host executable matching imageName
+			return EngineNative, imageName, nil
+		}
+	}
+
+	return "", "", fmt.Errorf(
+		"pod %q missing container image or engine annotation (%s or %s)",
+		pod.Metadata.Name, AnnotationExecutablePath, AnnotationWasmModule,
+	)
 }
 
 func CollectEnvVars(containers []types.Container) []types.EnvVar {

@@ -1,214 +1,135 @@
-# lok8s — Lightweight Pod Supervisor (No Containers Required)
+# lok8s ⚡
 
-lok8s is a lightweight, single-binary Kubernetes-compatible orchestrator designed to run processes directly on host machines as "Pods" without requiring Docker, containerd, or VMs. It executes native binaries and WebAssembly (Wasm) modules, providing Kubernetes-style resource management, volume projection, health probes, service networking, and rolling deployments.
+**The Containerless Local Kubernetes Runtime.**
 
----
+`lok8s` (gesprochen: *Local-K8s*) ist ein extrem leichtgewichtiger, in Go geschriebener Prozess-Supervisor für den "Inner Dev Loop". Er verhält sich nach außen wie ein echter Kubernetes API-Server, nutzt intern jedoch **keine Container-Daemons** (wie Docker oder containerd).
 
-## Capabilities and Use Cases
-
-lok8s is built for lightweight, container-free orchestration. Key use cases include:
-
-- **Local Microservice Development**: A fast, low-overhead alternative to Minikube or Docker Desktop for running multi-service setups with service discovery, configurations, and rolling updates.
-- **CI/CD and High-Speed Integration Testing**: Running automated orchestration and multi-process tests in sandboxed pipelines without the startup latency or footprint of spawning VM environments or Docker daemons.
-- **Single-Machine Desktop Application Suites**: Bundling and running local application suites (e.g. desktop software composed of separate frontend, backend, and daemon processes) under a unified supervisor without forcing the client to install Docker.
-- **Legacy Bare-Metal Orchestration**: Providing automated rollouts, scaling, and load-balancing for traditional applications without virtualization layers.
-- **Wasm Serverless Workloads**: Running sandboxed WebAssembly plug-ins or microservices using the embedded [wazero](https://github.com/tetratelabs/wazero) runtime.
+Anstatt Ressourcen für schwere Virtualisierungsschichten zu verschwenden, führt `lok8s` deine Workloads ballastfrei, isoliert und lokal aus – entweder als nativen Betriebssystem-Prozess oder in einer hochsicheren WebAssembly-Sandbox.
 
 ---
 
-## Limitations and Target Runtimes
+## 🎯 Das Problem
 
-Because lok8s does not use container virtualization (like Docker/containerd) or Linux namespaces for filesystem isolation, the choice of runtime impacts portability and system requirements:
+Die lokale Cloud-Native-Entwicklung ist zu schwergewichtig geworden. Tools wie `minikube`, `kind` oder Docker Desktop zwingen Entwickler in einen langsamen Dev-Loop:
 
-### 1. Native Executable Engine
-The native engine runs executables directly as host processes using system calls:
-- **Compiled Languages (Go, Rust, C/C++, Zig)**: Highly suited. These compile to standalone, self-contained binaries, requiring no dependencies on the host OS. They start instantly and have zero runtime dependencies.
-- **Interpreted Languages (Python, Node.js, Ruby)**: Supported only if the corresponding runtime interpreter is installed on the host system. The manifest must declare the interpreter path (e.g. `/usr/bin/python3` or `node`) and pass the scripts as arguments.
-- **OS Portability**: Manifests are OS-dependent. A manifest targeting `/usr/bin/echo` will fail on Windows, and a Windows `.exe` will not run on Linux.
+1. Code kompilieren.
+2. Container-Image bauen.
+3. Image in die lokale Registry pushen.
+4. Alten Pod zerstören, neuen hochfahren.
 
-### 2. WebAssembly Engine ([wazero](https://github.com/tetratelabs/wazero))
-The WebAssembly engine runs compiled `.wasm` bytecode inside an embedded sandbox:
-- **Supported Languages**: The application must be compiled to WebAssembly with WASI support (standard for Rust, Go/TinyGo, C/C++).
-- **Portability**: Wasm modules are fully cross-platform and will run identically on Windows, Linux, and macOS without changes to the manifest.
-- **Sandbox Restrictions**: Access to the host system is strictly isolated. Workloads can only interact with files projected via volume mounts and network ports allocated by the controller.
+Das kostet Zeit, CPU-Zyklen und Akkulaufzeit.
 
----
+## 💡 Die Lösung: Dual-Engine Architektur
 
-## Architecture Overview
+`lok8s` eliminiert diesen Overhead komplett. Es mockt die K8s-Control-Plane und übersetzt Standard-Manifeste in rasend schnelle lokale Prozesse. Du hast die Wahl zwischen zwei Ausführungs-Engines:
 
-```mermaid
-graph TD
-    Client[lok8s CLI] -->|REST API / HTTP| Server[lok8s Apiserver]
-    Server --> Config[Config Store]
-    Server --> Service[Service Store]
-    Server --> Controller[Controller Store]
-    
-    Server --> DB[(bbolt DB: lok8s.db)]
-    
-    Server --> LM[Lifecycle Manager]
-    LM --> Registry[Engine Registry]
-    Registry --> Native[Native Process Engine]
-    Registry --> Wasm[Wasm wazero Engine]
-    
-    LM --> PortPool[Port Pool]
-    LM --> PM[Proxy Manager]
-    PM --> L4Proxy[TCP Reverse Proxy]
-    
-    depCtrl[Deployment Controller] -->|Reconcile| Server
-    rsCtrl[ReplicaSet Controller] -->|Reconcile| Server
-```
-
-1. **REST Apiserver**: Provides a subset of the Kubernetes v1 API (`/api/v1`) and apps/v1 API (`/apis/apps/v1`) supporting table output representations (`Accept: as=Table`) for CLI compatibility.
-2. **Engine Registry**: Detects manifest annotations and executes native processes or sandboxed Wasm modules.
-3. **Port Pool**: Manages TCP port allocations dynamically for pod hostPorts and service nodePorts.
-4. **Proxy Manager**: Spins up TCP reverse-proxies to load-balance incoming service requests using a round-robin algorithm across healthy pods.
-5. **Controllers**: Background workers executing reconciliation loops to scale ReplicaSets and orchestrate Deployment rollouts.
-6. **State Database**: A local [bbolt](https://github.com/etcd-io/bbolt) instance that records resources synchronously. Upon startup, the server automatically recovers from the database, pre-allocates ports, rebuilds service proxies, and relaunches running processes.
+1. **Native OS Engine (`os/exec`):** Führt deine kompilierten lokalen Binaries (Go, Rust, Node) direkt als Kindprozesse aus. Perfekt für maximalen Speed und vollen Systemzugriff während der Entwicklung.
+2. **WebAssembly Engine (`wazero`):** Lädt `.wasm`-Module als Byte-Array und führt sie in einer sicheren, plattformunabhängigen In-Memory-Sandbox aus. Zero-Overhead-Isolation ohne CGO.
 
 ---
 
-## Getting Started
+## ✨ Features
 
-### 1. Compile the Binary
-Build the single unified `lok8s` binary:
+* **Sub-Millisecond Boot Times:** Kein Image-Pull, kein Container-Overhead. Dein Code startet in dem Moment, in dem du `kubectl apply` drückst.
+* **100% K8s API Compatible:** Nutze deine gewohnten Tools. `kubectl`, `helm` und Kustomize funktionieren out-of-the-box gegen `localhost:8080`.
+* **Zero Configuration / Fallback to Image:** Du kannst deine unmodifizierten Produktions-Manifeste direkt deployen! `lok8s` löst den Bildnamen (`image`) automatisch auf und sucht nach einer passenden lokalen Binärdatei in deinem Suchpfad (`PATH`), deinem aktuellen Verzeichnis oder unter `./bin/`.
+* **Multi-Pod Colorized Log Streaming:** Streame Logs von mehreren Pods gleichzeitig mit `kubectl logs -l ...` oder `lok8s logs -l ...`. Zeilen werden automatisch farblich nach Pod markiert.
+* **Privacy & Local by Design:** Komplett offline-fähig. Keine Daten verlassen dein Host-System, kein Remote-Cluster erforderlich.
+* **Smart Localhost Routing:** `lok8s` fängt K8s-Services ab und weist deinen nativen Prozessen dynamisch freie Ports zu.
+
+---
+
+## 🚀 Quick Start
+
+### 1. Installation
+
+Lade dir das vorkompilierte Binary herunter oder baue es direkt aus dem Quellcode:
+
 ```bash
+git clone https://github.com/megawron/lok8s.git
+cd lok8s
 go build -o lok8s main.go
+./lok8s start
 ```
 
-### 2. Run the Apiserver
-Start the pod supervisor apiserver daemon (defaults to port `:8080`):
-```bash
-./lok8s server --addr :8080
-```
-This initializes the database file `lok8s.db` in the workspace directory.
+*Der lok8s API-Server lauscht nun auf `localhost:8080`.*
 
-### 3. Use the CLI Client
-Use the same binary to interact with the server (by default, it targets `http://localhost:8080`):
-```bash
-# Get all pods
-./lok8s get pods
+### 2. Standard-Manifeste direkt ausführen (Zero-Config)
 
-# Specify a target server address and namespace
-./lok8s -s http://localhost:8080 -n default get deployments
-```
+Du kannst deine produktionsbereiten Standard-Manifeste ohne Änderungen deployen. `lok8s` sucht nach einer ausführbaren Datei auf dem Host, die dem Bildnamen entspricht (z. B. `my-go-service` für `image: my-go-service:v1.0.0`):
 
----
-
-## CLI Commands Reference
-
-- **`apply -f <path.yaml>`**: Submits a resource manifest. Supports multi-document YAML files separated by `---`.
-- **`get <resource> [name]`**: Lists resources in tabular format or prints the JSON representation if a specific name is provided. Resource shorthand names are supported (e.g. `po`, `svc`, `cm`, `rs`, `deploy`).
-- **`delete <resource> <name>`**: Deletes a resource and stops associated processes.
-- **`logs [pod-name] [flags]`**: Streams logs. Supports single pod streaming, or multiple pod streaming via selectors. Flags include:
-  - `-f, --follow`: Stream logs continuously.
-  - `-l, --selector <selector>`: Stream logs from all pods matching the label selector (concurrently, color-coded).
-  - `--all`: Stream logs from all pods in the namespace (concurrently, color-coded).
-  - `--tail <count>`: Limit log output to the last `N` lines.
-
----
-
-## Resource Manifest Examples
-
-### Native Pod Manifest (`pod.yaml`)
-Runs a local binary (e.g., `echo`) with custom arguments:
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
-  name: native-echo
-  namespace: default
-  annotations:
-    lok8s.io/engine: "native"
-    lok8s.io/executable-path: "echo"
+  name: my-fast-backend
 spec:
   containers:
-  - name: main
-    args:
-    - "Hello from lok8s!"
+  - name: app
+    image: my-go-service:v1.0.0
+    env:
+    - name: DB_HOST
+      value: "localhost:5432"
 ```
 
-### WebAssembly Pod Manifest (`wasm-pod.yaml`)
-Runs a Wasm module (e.g., compiled from Rust or Go) using the built-in [wazero](https://github.com/tetratelabs/wazero) runtime:
+Stelle sicher, dass `my-go-service` kompiliert und im aktuellen Verzeichnis, unter `./bin/` oder in deinem System-`PATH` verfügbar ist. Wende das Manifest mit Standard-Tools an:
+
+```bash
+kubectl apply -f pod.yaml
+```
+
+### 3. Anpassung über Annotationen (Optional)
+
+Wenn du den Ausführungspfad explizit angeben willst oder WebAssembly nutzen möchtest, kannst du dies über Annotations steuern:
+
+#### Native Binaries
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
-  name: wasm-app
-  namespace: default
+  name: my-fast-backend
   annotations:
-    lok8s.io/engine: "wasm"
-    lok8s.io/executable-path: "path/to/app.wasm"
+    lok8s.io/executable-path: "./bin/my-go-service"
 spec:
   containers:
   - name: app
 ```
 
-### ConfigMap & Secrets (Volume Projection)
-ConfigMaps and Secrets can be projected as files inside the pod environment:
+#### WebAssembly Module
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: app-config
-data:
-  config.json: '{"debug": true}'
----
 apiVersion: v1
 kind: Pod
 metadata:
-  name: config-pod
+  name: secure-wasm-worker
   annotations:
-    lok8s.io/engine: "native"
-    lok8s.io/executable-path: "app-binary"
+    lok8s.io/wasm-module: "./bin/worker.wasm"
 spec:
-  volumes:
-  - name: cfg-vol
-    configMap:
-      name: app-config
   containers:
-  - name: main
-    volumeMounts:
-    - name: cfg-vol
-      mountPath: "./config"
+  - name: worker
 ```
 
-### Service Manifest (`service.yaml`)
-Registers a service and spins up a reverse-proxy routing to pods matching the labels:
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: web-service
-spec:
-  ports:
-  - port: 8080 # Proxy port on host
-  selector:
-    app: web
-```
+`lok8s` liest das Manifest, greift den kompilierten Code und startet den Prozess in Millisekunden. Stdout und Stderr werden sauber in dein Supervisor-Terminal geroutet.
 
-### Deployment Manifest (`deployment.yaml`)
-Maintains a set of replicated pods with automated rolling updates:
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: web-deployment
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: web
-  template:
-    metadata:
-      labels:
-        app: web
-      annotations:
-        lok8s.io/engine: "native"
-        lok8s.io/executable-path: "python"
-    spec:
-      containers:
-      - name: server
-        args: ["-m", "http.server", "80"]
-        ports:
-        - containerPort: 80
-```
+---
+
+## 🏗️ Architektur & Tech Stack
+
+`lok8s` ist zu 100% in Go geschrieben.
+
+* **Control Plane Simulation:** Bietet eine Kubernetes-kompatible REST-API an, sodass du wie gewohnt mit `kubectl`, `helm` oder `kustomize` arbeiten kannst.
+* **Process Management:** Handhabt den Lebenszyklus von Kindprozessen ressourcenschonend auf Systemebene.
+* **Wasm Runtime:** Integriert [wazero](https://wazero.io/) für absolute Speichersicherheit und CGO-freie WebAssembly-Ausführung.
+
+## 🤝 Contributing
+
+Wir freuen uns über Pull Requests! Egal ob du das Fuzz-Testing erweitern, die Netzwerk-Illusion robuster machen oder neue Edge-Cases abfangen willst – schau dir die offenen Issues an.
+
+1. Fork the repo
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for more information.

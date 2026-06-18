@@ -48,7 +48,7 @@ type rawManifest struct {
 }
 
 func main() {
-	if len(os.Args) > 1 && (os.Args[1] == "server" || os.Args[1] == "daemon" || os.Args[1] == "apiserver") {
+	if len(os.Args) > 1 && (os.Args[1] == "server" || os.Args[1] == "daemon" || os.Args[1] == "apiserver" || os.Args[1] == "start") {
 		runServer(os.Args[2:])
 		return
 	}
@@ -628,7 +628,7 @@ func printUsage() {
   lok8s <command> [args] [flags]
 
 Commands:
-  server                     Start the lok8s apiserver daemon
+  start                      Start the lok8s apiserver daemon (aliases: server, daemon)
   apply -f <file.yaml>       Apply resource configurations to apiserver
   get <resource> [name]      Retrieve resource details or list active resources
   delete <resource> <name>   Delete resources by type and name
