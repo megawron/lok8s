@@ -226,5 +226,5 @@ func resolveExecutable(target string) (string, error) {
 		return pathLook, nil
 	}
 
-	return "", fmt.Errorf("executable %q not found in current dir, ./bin/, or system PATH", target)
+	return "", fmt.Errorf("executable %q not found in current dir, ./bin/, or system PATH. (Note: lok8s runs workloads as native host processes. Ensure %q is built/compiled locally, installed on your host system, or running in an external container/cluster)", target, target)
 }
