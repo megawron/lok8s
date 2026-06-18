@@ -2,6 +2,13 @@
   <img src="assets/banner.png" alt="lok8s Banner" width="100%">
 </p>
 
+<p align="center">
+  <a href="https://pkg.go.dev/github.com/megawron/lok8s"><img src="https://pkg.go.dev/badge/github.com/megawron/lok8s.svg" alt="Go Reference"></a>
+  <a href="https://goreportcard.com/report/github.com/megawron/lok8s"><img src="https://goreportcard.com/badge/github.com/megawron/lok8s" alt="Go Report Card"></a>
+  <a href="https://github.com/megawron/lok8s/actions/workflows/ci.yml"><img src="https://github.com/megawron/lok8s/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
+
 **The Containerless Local Kubernetes Runtime.**
 
 Tired of waiting for docker build and local registry image pushes just to test a single code change? 
